@@ -24,6 +24,7 @@ class ErrorCode(str, Enum):
     ARTIFACT_BUILD_ERROR = "ARTIFACT_BUILD_ERROR"
     RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
     STATE_FILE_CONFLICT = "STATE_FILE_CONFLICT"
+    INGEST_LOCK_CONFLICT = "INGEST_LOCK_CONFLICT"
 
 
 class AvosError(Exception):
@@ -182,4 +183,16 @@ class StateFileConflictError(AvosError):
             code=ErrorCode.STATE_FILE_CONFLICT,
             hint="Another process may be writing to this file. Wait and retry.",
             retryable=True,
+        )
+
+
+class IngestLockError(AvosError):
+    """Raised when the ingest lock cannot be acquired."""
+
+    def __init__(self, message: str | None = None, holder_pid: int | None = None) -> None:
+        self.holder_pid = holder_pid
+        super().__init__(
+            message=message or "Another ingest process is running.",
+            code=ErrorCode.INGEST_LOCK_CONFLICT,
+            hint="Wait for the other ingest to finish, or remove .avos/ingest.lock if stale.",
         )

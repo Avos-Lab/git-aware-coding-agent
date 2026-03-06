@@ -202,6 +202,32 @@ class TestRetryBehavior:
             client.search(MEMORY_ID, query="test")
 
 
+class TestEndpointValidation:
+    def test_https_url_accepted(self):
+        client = AvosMemoryClient(api_key=API_KEY, api_url="https://api.avos.ai")
+        assert client is not None
+
+    def test_http_localhost_accepted(self):
+        client = AvosMemoryClient(api_key=API_KEY, api_url="http://localhost:8080")
+        assert client is not None
+
+    def test_http_127_0_0_1_accepted(self):
+        client = AvosMemoryClient(api_key=API_KEY, api_url="http://127.0.0.1:8080")
+        assert client is not None
+
+    def test_http_remote_rejected(self):
+        with pytest.raises(RequestContractError, match="HTTPS"):
+            AvosMemoryClient(api_key=API_KEY, api_url="http://api.avos.ai")
+
+    def test_http_remote_no_port_rejected(self):
+        with pytest.raises(RequestContractError, match="HTTPS"):
+            AvosMemoryClient(api_key=API_KEY, api_url="http://example.com/api")
+
+    def test_ftp_scheme_rejected(self):
+        with pytest.raises(RequestContractError, match="Unsupported"):
+            AvosMemoryClient(api_key=API_KEY, api_url="ftp://api.avos.ai")
+
+
 class TestApiKeyHeader:
     @respx.mock
     def test_sends_api_key_header(self, client: AvosMemoryClient):

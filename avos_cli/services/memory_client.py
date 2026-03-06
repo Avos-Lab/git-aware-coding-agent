@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from tenacity import (
@@ -34,6 +35,30 @@ _UPLOAD_TIMEOUT = 120.0
 _MAX_RETRIES = 3
 
 
+_LOCALHOST_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def _validate_endpoint(url: str) -> None:
+    """Validate that the API endpoint uses HTTPS, except for localhost.
+
+    Per security decision Q26: HTTP is allowed only for localhost/dev.
+
+    Raises:
+        RequestContractError: If URL scheme is HTTP for a non-localhost host.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme == "https":
+        return
+    if parsed.scheme == "http":
+        host = (parsed.hostname or "").lower()
+        if host in _LOCALHOST_HOSTS:
+            return
+        raise RequestContractError(
+            f"HTTP is only allowed for localhost. Use HTTPS for: {url}"
+        )
+    raise RequestContractError(f"Unsupported URL scheme: {parsed.scheme}")
+
+
 class _RetryableError(Exception):
     """Internal marker for errors that should trigger retry."""
 
@@ -52,6 +77,7 @@ class AvosMemoryClient:
     def __init__(self, api_key: str, api_url: str) -> None:
         if not api_key:
             raise AuthError("API key is required for Avos Memory API", service="Avos Memory")
+        _validate_endpoint(api_url)
         self._api_key = api_key
         self._api_url = api_url.rstrip("/")
         self._client = httpx.Client(

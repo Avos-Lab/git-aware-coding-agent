@@ -1,0 +1,32 @@
+[
+  {
+    "number": 101,
+    "title": "Add retry logic to payment service",
+    "user": {"login": "dev-alice"},
+    "state": "closed",
+    "merged_at": "2026-02-15T10:00:00Z",
+    "body": "Implements exponential backoff for payment retries.",
+    "comments": [
+      {"body": "Looks good, but consider jitter.", "user": {"login": "dev-bob"}}
+    ],
+    "reviews": [
+      {"body": "Approved with minor suggestions.", "user": {"login": "dev-bob"}, "state": "APPROVED"}
+    ],
+    "files": [
+      {"filename": "billing/retry.py", "additions": 50, "deletions": 10}
+    ]
+  },
+  {
+    "number": 102,
+    "title": "Fix null pointer in user service",
+    "user": {"login": "dev-bob"},
+    "state": "closed",
+    "merged_at": "2026-02-20T14:30:00Z",
+    "body": "Handles null user gracefully.",
+    "comments": [],
+    "reviews": [],
+    "files": [
+      {"filename": "users/service.py", "additions": 5, "deletions": 2}
+    ]
+  }
+]

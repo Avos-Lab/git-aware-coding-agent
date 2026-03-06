@@ -85,6 +85,45 @@ class TestRepoConfig:
         dumped = cfg.model_dump()
         assert dumped["api_key"] != "sk_super_secret"
 
+    def test_connected_at_defaults_none(self):
+        cfg = RepoConfig(
+            repo="org/repo",
+            memory_id="repo:org/repo",
+            api_url="https://api.example.com",
+            api_key=SecretStr("sk_test"),
+        )
+        assert cfg.connected_at is None
+
+    def test_connected_at_accepts_datetime(self):
+        now = datetime.now(tz=timezone.utc)
+        cfg = RepoConfig(
+            repo="org/repo",
+            memory_id="repo:org/repo",
+            api_url="https://api.example.com",
+            api_key=SecretStr("sk_test"),
+            connected_at=now,
+        )
+        assert cfg.connected_at == now
+
+    def test_schema_version_defaults_to_1(self):
+        cfg = RepoConfig(
+            repo="org/repo",
+            memory_id="repo:org/repo",
+            api_url="https://api.example.com",
+            api_key=SecretStr("sk_test"),
+        )
+        assert cfg.schema_version == "1"
+
+    def test_schema_version_override(self):
+        cfg = RepoConfig(
+            repo="org/repo",
+            memory_id="repo:org/repo",
+            api_url="https://api.example.com",
+            api_key=SecretStr("sk_test"),
+            schema_version="2",
+        )
+        assert cfg.schema_version == "2"
+
     def test_missing_required_fields_rejected(self):
         with pytest.raises(ValidationError):
             RepoConfig()  # type: ignore[call-arg]

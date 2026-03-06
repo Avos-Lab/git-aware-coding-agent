@@ -125,6 +125,7 @@ class TestExceptionHierarchy:
             "SERVICE_PARSE_ERROR",
             "ARTIFACT_BUILD_ERROR",
             "STATE_FILE_CONFLICT",
+            "INGEST_LOCK_CONFLICT",
         }
         actual_codes = {e.value for e in ErrorCode}
         assert actual_codes == expected_codes

@@ -1,0 +1,22 @@
+[
+  {
+    "number": 50,
+    "title": "Payment timeout on high load",
+    "user": {"login": "dev-alice"},
+    "state": "open",
+    "labels": [{"name": "bug"}, {"name": "critical"}],
+    "body": "Payments time out when load exceeds 1000 TPS.",
+    "comments": [
+      {"body": "Confirmed on staging.", "user": {"login": "dev-bob"}}
+    ]
+  },
+  {
+    "number": 51,
+    "title": "Add metrics dashboard",
+    "user": {"login": "dev-charlie"},
+    "state": "open",
+    "labels": [{"name": "enhancement"}],
+    "body": "Need a Grafana dashboard for payment metrics.",
+    "comments": []
+  }
+]
