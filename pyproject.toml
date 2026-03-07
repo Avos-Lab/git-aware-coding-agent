@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "avos-cli"
-version = "0.5.0"
+version = "1.0.0"
 description = "Developer memory CLI for repositories"
 readme = "README.md"
 license = "Apache-2.0"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["cli", "developer-tools", "knowledge-management", "ai-agents", "engineering-memory"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
@@ -35,7 +35,16 @@ dependencies = [
     "python-dotenv>=1.0.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/avoslab/avos-dev-cli"
+Documentation = "https://github.com/avoslab/avos-dev-cli/blob/main/docs/user/README.md"
+Source = "https://github.com/avoslab/avos-dev-cli"
+Issues = "https://github.com/avoslab/avos-dev-cli/issues"
+
 [project.optional-dependencies]
+full = [
+    "anthropic>=0.25.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=5.0.0",
@@ -45,6 +54,7 @@ dev = [
     "freezegun>=1.4.0",
     "mypy>=1.8.0",
     "ruff>=0.3.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.scripts]
@@ -104,6 +114,10 @@ addopts = [
     "-q",
 ]
 timeout = 30
+markers = [
+    "contract: API contract boundary tests",
+    "benchmark: performance benchmark tests",
+]
 
 [tool.coverage.run]
 source = ["avos_cli"]

@@ -47,7 +47,7 @@ class TestPackageImport:
         assert all(p.isdigit() for p in parts)
 
     def test_version_value(self):
-        assert __version__ == "0.5.0"
+        assert __version__ == "1.0.0"
 
     def test_package_importable(self):
         import avos_cli
@@ -82,12 +82,12 @@ class TestCLIEntryPoint:
     def test_version_flag(self):
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert "0.5.0" in result.stdout
+        assert "1.0.0" in result.stdout
 
     def test_version_short_flag(self):
         result = runner.invoke(app, ["-v"])
         assert result.exit_code == 0
-        assert "0.5.0" in result.stdout
+        assert "1.0.0" in result.stdout
 
     def test_no_args_shows_help(self):
         result = runner.invoke(app, [])

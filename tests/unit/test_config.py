@@ -149,7 +149,10 @@ class TestLoadConfig:
         assert cfg.llm.provider == "openai"
         assert cfg.llm.model == "gpt-4"
 
-    def test_config_with_github_token(self, avos_dir: Path, valid_config_data: dict):
+    def test_config_with_github_token(
+        self, avos_dir: Path, valid_config_data: dict, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
         valid_config_data["github_token"] = "ghp_file_token"
         config_path = avos_dir / "config.json"
         config_path.write_text(json.dumps(valid_config_data))
