@@ -152,8 +152,8 @@ class SessionStartOrchestrator:
         pid_data = read_json_safe(pid_path)
 
         if pid_data is not None:
-            pid = int(pid_data.get("pid", 0))
-            if self._pid_alive(pid):
+            pid = int(pid_data.get("pid", -1))
+            if pid > 0 and self._pid_alive(pid):
                 return "blocked"
 
         self._cleanup_stale_state()

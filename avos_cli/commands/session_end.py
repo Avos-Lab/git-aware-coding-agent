@@ -138,8 +138,13 @@ class SessionEndOrchestrator:
             print_warning("WATCHER_DEAD: No PID file found. Continuing with available data.")
             return
 
-        pid = int(pid_data.get("pid", 0))
+        pid = int(pid_data.get("pid", -1))
         pid_session_id = str(pid_data.get("session_id", ""))
+
+        if pid <= 0:
+            _log.warning("Invalid PID value %d in PID file. Skipping process termination.", pid)
+            warnings_list.append("WATCHER_DEAD: Invalid PID in file. Skipping process termination.")
+            return
 
         if pid_session_id != session_id:
             _log.warning(

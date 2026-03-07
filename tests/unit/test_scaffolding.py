@@ -6,8 +6,10 @@ the CLI entry point works, and the exception hierarchy is well-formed.
 
 from __future__ import annotations
 
+import importlib
 import subprocess
 import sys
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
@@ -56,6 +58,17 @@ class TestPackageImport:
         from avos_cli.cli import main
 
         assert hasattr(main, "app")
+
+    def test_cli_module_loads_dotenv_on_import(self):
+        """CLI module should load .env variables when imported."""
+        import avos_cli.cli.main as cli_main
+
+        with patch("dotenv.load_dotenv") as load_dotenv_mock:
+            importlib.reload(cli_main)
+            load_dotenv_mock.assert_called_once()
+
+        # Restore original module state after patched reload.
+        importlib.reload(cli_main)
 
     def test_exceptions_module_importable(self):
         from avos_cli import exceptions

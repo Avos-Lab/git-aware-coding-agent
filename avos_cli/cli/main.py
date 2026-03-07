@@ -10,9 +10,14 @@ import os
 from pathlib import Path
 
 import typer
+from dotenv import load_dotenv
 
 from avos_cli import __version__
 from avos_cli.utils.output import print_error
+
+# Load environment variables from .env automatically (without overriding
+# variables already exported in the shell).
+load_dotenv()
 
 app = typer.Typer(
     name="avos",
@@ -159,11 +164,14 @@ def ask(
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
-    llm_provider = os.environ.get("AVOS_LLM_PROVIDER", "")
-    llm_model = os.environ.get("AVOS_LLM_MODEL", "")
+    anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    if not anthropic_api_key:
+        print_error("[AUTH_ERROR] ANTHROPIC_API_KEY environment variable is required for LLM synthesis.")
         raise typer.Exit(1)
 
     try:
@@ -174,7 +182,7 @@ def ask(
 
     orchestrator = AskOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
-        llm_client=LLMClient(api_key=api_key),
+        llm_client=LLMClient(api_key=anthropic_api_key),
         repo_root=repo_root,
     )
     code = orchestrator.run("_/_", question)
@@ -194,9 +202,14 @@ def history(
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+    anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    if not anthropic_api_key:
+        print_error("[AUTH_ERROR] ANTHROPIC_API_KEY environment variable is required for LLM synthesis.")
         raise typer.Exit(1)
 
     try:
@@ -207,7 +220,7 @@ def history(
 
     orchestrator = HistoryOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
-        llm_client=LLMClient(api_key=api_key),
+        llm_client=LLMClient(api_key=anthropic_api_key),
         repo_root=repo_root,
     )
     code = orchestrator.run("_/_", subject)
@@ -253,7 +266,6 @@ def session_end() -> None:
     from avos_cli.commands.session_end import SessionEndOrchestrator
     from avos_cli.config.manager import find_repo_root
     from avos_cli.exceptions import RepositoryContextError
-    from avos_cli.services.llm_client import LLMClient
     from avos_cli.services.memory_client import AvosMemoryClient
 
     api_key = os.environ.get("AVOS_API_KEY", "")
@@ -271,7 +283,7 @@ def session_end() -> None:
 
     orchestrator = SessionEndOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
-        llm_client=LLMClient(api_key=api_key),
+        llm_client=None,
         repo_root=repo_root,
     )
     code = orchestrator.run()

@@ -64,7 +64,7 @@ _BASE_CONFIDENCE = 100
 _PATTERN_DETECTION_WEIGHT = 40
 _STRUCTURED_FIELD_WEIGHT = 25
 _PII_WEIGHT = 20
-_INJECTION_PENALTY_WEIGHT = 15
+_INJECTION_PENALTY_WEIGHT = 40
 
 
 class SanitizationService:
@@ -103,8 +103,14 @@ class SanitizationService:
                 any_redaction = True
                 all_redaction_types.update(redaction_types)
 
-            injection_hits = self._count_injection_markers(art.content)
+            injection_hits = self._count_injection_markers(content)
             total_injection_hits += injection_hits
+
+            content, injection_redacted = self._redact_injection_markers(content)
+            if injection_redacted:
+                any_redaction = True
+                all_redaction_types.add("injection")
+                redaction_types.add("injection")
 
             sanitized_list.append(
                 SanitizedArtifact(
@@ -114,7 +120,7 @@ class SanitizationService:
                     rank=art.rank,
                     source_type=art.source_type,
                     display_ref=art.display_ref,
-                    redaction_applied=had_redaction,
+                    redaction_applied=had_redaction or injection_redacted,
                     redaction_types=sorted(redaction_types),
                 )
             )
@@ -162,6 +168,20 @@ class SanitizationService:
                 count += 1
         return count
 
+    def _redact_injection_markers(self, content: str) -> tuple[str, bool]:
+        """Remove prompt-injection markers from content.
+
+        Returns:
+            Tuple of (redacted_content, had_any_redaction).
+        """
+        redacted = content
+        had_redaction = False
+        for marker in _INJECTION_MARKERS:
+            if marker.search(redacted):
+                redacted = marker.sub("[REDACTED_INJECTION]", redacted)
+                had_redaction = True
+        return redacted, had_redaction
+
     def _compute_confidence(
         self,
         any_redaction: bool,
@@ -170,25 +190,29 @@ class SanitizationService:
     ) -> int:
         """Compute deterministic sanitization confidence score (0-100).
 
-        Scoring:
+        Scoring uses the defined weight constants to produce meaningful
+        differentiation. Injection markers are heavily penalized since
+        they indicate potential prompt injection attempts.
+
         - Start at 100 (base).
-        - Deduct based on redaction types found (patterns handled = confidence maintained).
-        - Deduct for injection markers (subtractive penalty).
-        - After successful redaction, confidence recovers partially.
+        - Deduct _PATTERN_DETECTION_WEIGHT for secrets/credentials found.
+        - Deduct _PII_WEIGHT for PII found.
+        - Deduct _INJECTION_PENALTY_WEIGHT per injection marker (capped).
         """
         score = _BASE_CONFIDENCE
 
         if any_redaction:
-            # Small deduction for having needed redaction at all
-            score -= 5
-            # But redaction was successful, so confidence stays reasonable
+            if "api_key" in redaction_types or "token" in redaction_types:
+                score -= _PATTERN_DETECTION_WEIGHT
             if "private_key" in redaction_types:
-                score -= 3
+                score -= _PATTERN_DETECTION_WEIGHT
             if "credential" in redaction_types:
-                score -= 2
+                score -= _STRUCTURED_FIELD_WEIGHT
+            if "pii" in redaction_types:
+                score -= _PII_WEIGHT
 
         if injection_hits > 0:
-            penalty = min(injection_hits * 5, _INJECTION_PENALTY_WEIGHT)
+            penalty = min(injection_hits * _INJECTION_PENALTY_WEIGHT, 60)
             score -= penalty
 
         return max(0, min(100, score))
