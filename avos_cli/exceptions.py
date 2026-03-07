@@ -25,6 +25,16 @@ class ErrorCode(str, Enum):
     RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
     STATE_FILE_CONFLICT = "STATE_FILE_CONFLICT"
     INGEST_LOCK_CONFLICT = "INGEST_LOCK_CONFLICT"
+    SANITIZATION_FAILED = "SANITIZATION_FAILED"
+    GROUNDING_FAILED = "GROUNDING_FAILED"
+    LLM_SYNTHESIS_ERROR = "LLM_SYNTHESIS_ERROR"
+    CONTEXT_BUDGET_ERROR = "CONTEXT_BUDGET_ERROR"
+    QUERY_EMPTY_RESULT = "QUERY_EMPTY_RESULT"
+    SESSION_ACTIVE_CONFLICT = "SESSION_ACTIVE_CONFLICT"
+    SESSION_NOT_FOUND = "SESSION_NOT_FOUND"
+    WATCHER_SPAWN_FAILED = "WATCHER_SPAWN_FAILED"
+    WATCHER_STOP_FAILED = "WATCHER_STOP_FAILED"
+    CHECKPOINT_PARSE_ERROR = "CHECKPOINT_PARSE_ERROR"
 
 
 class AvosError(Exception):
@@ -195,4 +205,139 @@ class IngestLockError(AvosError):
             message=message or "Another ingest process is running.",
             code=ErrorCode.INGEST_LOCK_CONFLICT,
             hint="Wait for the other ingest to finish, or remove .avos/ingest.lock if stale.",
+        )
+
+
+class SanitizationError(AvosError):
+    """Raised when sanitization confidence is below threshold.
+
+    Args:
+        message: Description of the sanitization failure.
+        confidence_score: The computed confidence score that triggered the failure.
+    """
+
+    def __init__(self, message: str, confidence_score: int | None = None) -> None:
+        self.confidence_score = confidence_score
+        super().__init__(
+            message=message,
+            code=ErrorCode.SANITIZATION_FAILED,
+            hint="Sanitization confidence too low for safe synthesis. Falling back to raw results.",
+        )
+
+
+class GroundingError(AvosError):
+    """Raised when citation grounding fails minimum threshold.
+
+    Args:
+        message: Description of the grounding failure.
+        grounded_count: Number of successfully grounded citations.
+        total_count: Total number of citations attempted.
+    """
+
+    def __init__(
+        self, message: str, grounded_count: int = 0, total_count: int = 0
+    ) -> None:
+        self.grounded_count = grounded_count
+        self.total_count = total_count
+        super().__init__(
+            message=message,
+            code=ErrorCode.GROUNDING_FAILED,
+            hint="Synthesis citations could not be verified against retrieved artifacts.",
+        )
+
+
+class LLMSynthesisError(AvosError):
+    """Raised when LLM synthesis fails.
+
+    Args:
+        message: Description of the synthesis failure.
+        failure_class: 'transient' (retryable) or 'non_transient' or 'unknown'.
+    """
+
+    def __init__(self, message: str, failure_class: str = "unknown") -> None:
+        self.failure_class = failure_class
+        retryable = failure_class == "transient"
+        super().__init__(
+            message=message,
+            code=ErrorCode.LLM_SYNTHESIS_ERROR,
+            hint="LLM synthesis failed. Falling back to raw search results.",
+            retryable=retryable,
+        )
+
+
+class ContextBudgetError(AvosError):
+    """Raised when context budget cannot meet minimum evidence floor."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message=message,
+            code=ErrorCode.CONTEXT_BUDGET_ERROR,
+            hint="Insufficient evidence artifacts for synthesis. Using fallback output.",
+        )
+
+
+class SessionActiveError(AvosError):
+    """Raised when a session is already active and blocks a new start.
+
+    Args:
+        message: Description of the conflict.
+    """
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            message=message or "A session is already active.",
+            code=ErrorCode.SESSION_ACTIVE_CONFLICT,
+            hint="Run 'avos session-end' to finish the current session first.",
+        )
+
+
+class SessionNotFoundError(AvosError):
+    """Raised when no active session exists for an end operation.
+
+    Args:
+        message: Description of the missing session.
+    """
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            message=message or "No active session found.",
+            code=ErrorCode.SESSION_NOT_FOUND,
+            hint="Run 'avos session-start' to begin a new session.",
+        )
+
+
+class WatcherLifecycleError(AvosError):
+    """Raised when the watcher process fails to spawn or stop.
+
+    Args:
+        message: Description of the lifecycle failure.
+        failure_type: 'spawn' or 'stop' to select the appropriate error code.
+    """
+
+    def __init__(self, message: str, failure_type: str = "spawn") -> None:
+        self.failure_type = failure_type
+        code = (
+            ErrorCode.WATCHER_STOP_FAILED
+            if failure_type == "stop"
+            else ErrorCode.WATCHER_SPAWN_FAILED
+        )
+        super().__init__(
+            message=message,
+            code=code,
+            hint="Check process permissions and system resources.",
+        )
+
+
+class CheckpointParseError(AvosError):
+    """Raised when checkpoint JSONL lines cannot be parsed.
+
+    Args:
+        message: Description of the parse failure.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message=message,
+            code=ErrorCode.CHECKPOINT_PARSE_ERROR,
+            hint="Checkpoint file may be corrupted. Session will use available data.",
         )

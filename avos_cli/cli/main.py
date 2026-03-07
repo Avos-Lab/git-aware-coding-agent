@@ -146,5 +146,137 @@ def ingest(
     raise typer.Exit(code)
 
 
+@app.command()
+def ask(
+    question: str = typer.Argument(..., help="Natural language question about the repository."),
+) -> None:
+    """Ask a question about the repository and get an evidence-backed answer."""
+    from avos_cli.commands.ask import AskOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.llm_client import LLMClient
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+    llm_provider = os.environ.get("AVOS_LLM_PROVIDER", "")
+    llm_model = os.environ.get("AVOS_LLM_MODEL", "")
+
+    if not api_key:
+        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = AskOrchestrator(
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        llm_client=LLMClient(api_key=api_key),
+        repo_root=repo_root,
+    )
+    code = orchestrator.run("_/_", question)
+    raise typer.Exit(code)
+
+
+@app.command()
+def history(
+    subject: str = typer.Argument(..., help="Subject or topic for chronological history."),
+) -> None:
+    """Get a chronological history of a subject in the repository."""
+    from avos_cli.commands.history import HistoryOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.llm_client import LLMClient
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+
+    if not api_key:
+        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = HistoryOrchestrator(
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        llm_client=LLMClient(api_key=api_key),
+        repo_root=repo_root,
+    )
+    code = orchestrator.run("_/_", subject)
+    raise typer.Exit(code)
+
+
+@app.command(name="session-start")
+def session_start(
+    goal: str = typer.Argument(..., help="Session goal description."),
+) -> None:
+    """Start a coding session with a goal and background activity capture."""
+    from avos_cli.commands.session_start import SessionStartOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.git_client import GitClient
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+
+    if not api_key:
+        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = SessionStartOrchestrator(
+        git_client=GitClient(),
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        repo_root=repo_root,
+    )
+    code = orchestrator.run(goal)
+    raise typer.Exit(code)
+
+
+@app.command(name="session-end")
+def session_end() -> None:
+    """End the current coding session and store a session memory artifact."""
+    from avos_cli.commands.session_end import SessionEndOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.llm_client import LLMClient
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+
+    if not api_key:
+        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = SessionEndOrchestrator(
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        llm_client=LLMClient(api_key=api_key),
+        repo_root=repo_root,
+    )
+    code = orchestrator.run()
+    raise typer.Exit(code)
+
+
 if __name__ == "__main__":
     app()

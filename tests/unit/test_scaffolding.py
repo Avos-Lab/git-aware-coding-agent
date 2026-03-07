@@ -45,7 +45,7 @@ class TestPackageImport:
         assert all(p.isdigit() for p in parts)
 
     def test_version_value(self):
-        assert __version__ == "0.1.0"
+        assert __version__ == "0.4.0"
 
     def test_package_importable(self):
         import avos_cli
@@ -69,12 +69,12 @@ class TestCLIEntryPoint:
     def test_version_flag(self):
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.stdout
+        assert "0.4.0" in result.stdout
 
     def test_version_short_flag(self):
         result = runner.invoke(app, ["-v"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.stdout
+        assert "0.4.0" in result.stdout
 
     def test_no_args_shows_help(self):
         result = runner.invoke(app, [])
@@ -126,6 +126,16 @@ class TestExceptionHierarchy:
             "ARTIFACT_BUILD_ERROR",
             "STATE_FILE_CONFLICT",
             "INGEST_LOCK_CONFLICT",
+            "SANITIZATION_FAILED",
+            "GROUNDING_FAILED",
+            "LLM_SYNTHESIS_ERROR",
+            "CONTEXT_BUDGET_ERROR",
+            "QUERY_EMPTY_RESULT",
+            "SESSION_ACTIVE_CONFLICT",
+            "SESSION_NOT_FOUND",
+            "WATCHER_SPAWN_FAILED",
+            "WATCHER_STOP_FAILED",
+            "CHECKPOINT_PARSE_ERROR",
         }
         actual_codes = {e.value for e in ErrorCode}
         assert actual_codes == expected_codes

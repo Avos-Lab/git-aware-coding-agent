@@ -13,7 +13,29 @@ from avos_cli.models.artifacts import (
     SessionArtifact,
     WIPArtifact,
 )
-from avos_cli.models.config import LLMConfig, RepoConfig, SessionState, WatchState
+from avos_cli.models.config import (
+    LLMConfig,
+    RepoConfig,
+    SessionCheckpoint,
+    SessionState,
+    WatchState,
+    WatcherPidState,
+)
+from avos_cli.models.query import (
+    BudgetResult,
+    FallbackReason,
+    GroundedCitation,
+    GroundingStatus,
+    QueryMode,
+    QueryResultEnvelope,
+    ReferenceType,
+    RetrievedArtifact,
+    SanitizationResult,
+    SanitizedArtifact,
+    SynthesisRequest,
+    SynthesisResponse,
+    TimelineEvent,
+)
 
 __all__ = [
     "CommitArtifact",
@@ -27,7 +49,22 @@ __all__ = [
     "SearchRequest",
     "SearchResult",
     "SessionArtifact",
+    "SessionCheckpoint",
     "SessionState",
     "WIPArtifact",
     "WatchState",
+    "WatcherPidState",
+    "BudgetResult",
+    "FallbackReason",
+    "GroundedCitation",
+    "GroundingStatus",
+    "QueryMode",
+    "QueryResultEnvelope",
+    "ReferenceType",
+    "RetrievedArtifact",
+    "SanitizationResult",
+    "SanitizedArtifact",
+    "SynthesisRequest",
+    "SynthesisResponse",
+    "TimelineEvent",
 ]
