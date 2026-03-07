@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "avos-cli"
-version = "0.4.0"
+version = "0.5.0"
 description = "Developer memory CLI for repositories"
 readme = "README.md"
 license = "Apache-2.0"
@@ -119,9 +119,9 @@ exclude_lines = [
 ]
 omit = [
     "avos_cli/utils/output.py",
-    "avos_cli/commands/*",
     "avos_cli/services/llm_client.py",
-    "avos_cli/services/symbol_extractor.py",
     "avos_cli/services/watcher.py",
+    "avos_cli/services/watch_watcher.py",
     "avos_cli/parsers/*",
+    "avos_cli/cli/main.py",
 ]

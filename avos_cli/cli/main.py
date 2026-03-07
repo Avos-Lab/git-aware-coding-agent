@@ -290,5 +290,100 @@ def session_end() -> None:
     raise typer.Exit(code)
 
 
+@app.command()
+def watch(
+    stop: bool = typer.Option(False, "--stop", help="Stop the active watch process."),
+) -> None:
+    """Watch for file changes and publish WIP activity to team memory."""
+    from avos_cli.commands.watch import WatchOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.git_client import GitClient
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+
+    if not api_key:
+        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = WatchOrchestrator(
+        git_client=GitClient(),
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        repo_root=repo_root,
+    )
+    code = orchestrator.run(stop=stop)
+    raise typer.Exit(code)
+
+
+@app.command()
+def team() -> None:
+    """Show active team members and their current work."""
+    from avos_cli.commands.team import TeamOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+
+    if not api_key:
+        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = TeamOrchestrator(
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        repo_root=repo_root,
+    )
+    code = orchestrator.run()
+    raise typer.Exit(code)
+
+
+@app.command()
+def conflicts(
+    strict: bool = typer.Option(False, "--strict", help="Promote symbol overlaps to HIGH severity."),
+) -> None:
+    """Detect potential merge conflicts with active team work."""
+    from avos_cli.commands.conflicts import ConflictsOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.git_client import GitClient
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+
+    if not api_key:
+        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = ConflictsOrchestrator(
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        git_client=GitClient(),
+        repo_root=repo_root,
+    )
+    code = orchestrator.run(strict=strict)
+    raise typer.Exit(code)
+
+
 if __name__ == "__main__":
     app()

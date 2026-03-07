@@ -1,12 +1,14 @@
 """Time utilities for date calculations and TTL checks.
 
 Provides helpers for computing date windows (e.g. "180 days ago"),
-checking TTL expiry, and parsing ISO 8601 timestamps.
+checking TTL expiry, parsing ISO 8601 timestamps, and artifact
+active-window filtering with parse-audit support.
 All datetime operations use UTC.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 
@@ -54,3 +56,43 @@ def parse_iso8601(timestamp: str) -> datetime:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+_audit_log = logging.getLogger("avos_cli.ttl_parse_audit")
+
+
+def is_artifact_active(
+    timestamp_str: str,
+    ttl_hours: int = 24,
+    *,
+    artifact_id: str = "",
+    command_context: str = "",
+) -> bool:
+    """Check whether an artifact timestamp is within the active TTL window.
+
+    Wraps is_within_ttl with structured parse-audit logging on failure.
+    On parse error the artifact is excluded from the active set and a
+    parse-audit record is emitted (architecture Section 5.3 mandate).
+
+    Args:
+        timestamp_str: ISO 8601 formatted timestamp from the artifact.
+        ttl_hours: Active window in hours (default 24).
+        artifact_id: Identifier for the artifact (for audit trail).
+        command_context: Calling command name ('team' or 'conflicts').
+
+    Returns:
+        True if the artifact is within the active window, False otherwise
+        (including on parse failure).
+    """
+    try:
+        return is_within_ttl(timestamp_str, ttl_hours)
+    except (ValueError, TypeError, OverflowError) as exc:
+        _audit_log.warning(
+            "TTL parse-audit: artifact=%s raw_timestamp=%r "
+            "error_category=%s command=%s",
+            artifact_id,
+            timestamp_str,
+            type(exc).__name__,
+            command_context,
+        )
+        return False

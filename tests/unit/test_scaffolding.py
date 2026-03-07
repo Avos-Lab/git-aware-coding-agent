@@ -47,7 +47,7 @@ class TestPackageImport:
         assert all(p.isdigit() for p in parts)
 
     def test_version_value(self):
-        assert __version__ == "0.4.0"
+        assert __version__ == "0.5.0"
 
     def test_package_importable(self):
         import avos_cli
@@ -82,12 +82,12 @@ class TestCLIEntryPoint:
     def test_version_flag(self):
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert "0.4.0" in result.stdout
+        assert "0.5.0" in result.stdout
 
     def test_version_short_flag(self):
         result = runner.invoke(app, ["-v"])
         assert result.exit_code == 0
-        assert "0.4.0" in result.stdout
+        assert "0.5.0" in result.stdout
 
     def test_no_args_shows_help(self):
         result = runner.invoke(app, [])
@@ -149,6 +149,10 @@ class TestExceptionHierarchy:
             "WATCHER_SPAWN_FAILED",
             "WATCHER_STOP_FAILED",
             "CHECKPOINT_PARSE_ERROR",
+            "WATCH_ACTIVE_CONFLICT",
+            "WATCH_NOT_FOUND",
+            "SUBSYSTEM_MAP_INVALID",
+            "SYMBOL_EXTRACTION_FAILED",
         }
         actual_codes = {e.value for e in ErrorCode}
         assert actual_codes == expected_codes
