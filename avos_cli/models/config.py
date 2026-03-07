@@ -99,3 +99,49 @@ class WatchState(BaseModel):
     branch: str
     last_publish_time: datetime
     files_tracked: list[str]
+
+
+class WatcherPidState(BaseModel):
+    """PID file state for the session watcher process.
+
+    Written to .avos/watcher.pid by session start.
+    Read by session end for ownership verification before SIGTERM.
+
+    Args:
+        pid: OS process ID of the watcher.
+        started_at: UTC timestamp when the watcher was spawned.
+        session_id: Session identifier for ownership verification.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    pid: int
+    started_at: datetime
+    session_id: str
+
+
+class SessionCheckpoint(BaseModel):
+    """Single checkpoint record from the watcher process.
+
+    Appended as one JSON line per interval to .avos/session_checkpoints.jsonl.
+    Captures metadata-only activity snapshot -- never raw source code.
+
+    Args:
+        timestamp: UTC timestamp of the checkpoint.
+        session_id: Owning session identifier.
+        branch: Git branch at checkpoint time.
+        files_modified: Repository-relative paths modified since last checkpoint.
+        diff_stats: Aggregate line counts, e.g. {"added": 10, "removed": 3}.
+        test_commands_detected: Command names (no arguments) observed running.
+        errors_detected: Coarse error signatures observed.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    timestamp: datetime
+    session_id: str
+    branch: str
+    files_modified: list[str] = []
+    diff_stats: dict[str, int] = {}
+    test_commands_detected: list[str] = []
+    errors_detected: list[str] = []
