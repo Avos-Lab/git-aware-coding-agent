@@ -26,7 +26,14 @@ from avos_cli.models.artifacts import SessionArtifact
 from avos_cli.models.config import SessionCheckpoint
 from avos_cli.services.watcher import parse_checkpoints
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success, print_warning
+from avos_cli.utils.output import (
+    print_error,
+    print_info,
+    print_success,
+    print_warning,
+    render_kv_panel,
+    render_table,
+)
 
 _log = get_logger("commands.session_end")
 
@@ -256,22 +263,49 @@ class SessionEndOrchestrator:
         checkpoints: list[SessionCheckpoint],
         warnings_list: list[str],
     ) -> None:
-        """Print session end summary."""
-        print_success(f"Session ended: {session_id}")
-        print_info(f"  Goal: {goal}")
-        print_info(f"  Checkpoints: {len(checkpoints)}")
-
+        """Print session end summary with Rich panel and timeline table."""
         all_files: set[str] = set()
+        total_added = 0
+        total_removed = 0
         for cp in checkpoints:
             all_files.update(cp.files_modified)
-        print_info(f"  Files touched: {len(all_files)}")
+            total_added += cp.diff_stats.get("added", 0)
+            total_removed += cp.diff_stats.get("removed", 0)
+
+        render_kv_panel(
+            f"Session Ended: {session_id}",
+            [
+                ("Goal", goal),
+                ("Checkpoints", str(len(checkpoints))),
+                ("Files touched", str(len(all_files))),
+                ("Total changes", f"+{total_added} / -{total_removed}"),
+            ],
+            style="success",
+        )
+
+        if checkpoints:
+            timeline_rows: list[list[str]] = []
+            for cp in checkpoints:
+                ts = cp.timestamp.isoformat() if hasattr(cp.timestamp, "isoformat") else str(cp.timestamp)
+                added = cp.diff_stats.get("added", 0)
+                removed = cp.diff_stats.get("removed", 0)
+                timeline_rows.append([
+                    ts,
+                    str(len(cp.files_modified)),
+                    f"+{added}/-{removed}",
+                ])
+            render_table(
+                "Timeline",
+                [("Time", "dim"), ("Files modified", ""), ("Changes", "")],
+                timeline_rows,
+            )
 
         if warnings_list:
-            print_warning(f"  Warnings: {len(warnings_list)}")
+            print_warning(f"Warnings: {len(warnings_list)}")
             for w in warnings_list:
-                print_warning(f"    - {w}")
+                print_warning(f"  - {w}")
 
-        print_info("  Session artifact stored in memory.")
+        print_success("Session artifact stored in memory.")
 
     @staticmethod
     def _pid_alive(pid: int) -> bool:

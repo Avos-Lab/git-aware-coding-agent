@@ -34,7 +34,7 @@ from avos_cli.services.git_client import GitClient
 from avos_cli.services.github_client import GitHubClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success
+from avos_cli.utils.output import print_error, print_info, print_success, render_table
 from avos_cli.utils.time_helpers import days_ago
 
 _log = get_logger("commands.ingest")
@@ -418,25 +418,38 @@ class IngestOrchestrator:
         return bool(parts[0]) and bool(parts[1])
 
     def _print_summary(self, results: list[IngestStageResult]) -> None:
-        """Print a summary of all ingest stages."""
+        """Print a summary of all ingest stages as a Rich table."""
         stage_names = ["PRs", "Issues", "Commits", "Docs"]
         total_stored = 0
         total_skipped = 0
         total_failed = 0
+
+        rows: list[list[str]] = []
         for name, r in zip(stage_names, results, strict=True):
-            print_info(
-                f"  {name}: {r.stored} stored, {r.skipped} skipped, {r.failed} failed"
-            )
+            rows.append([name, str(r.stored), str(r.skipped), str(r.failed)])
             total_stored += r.stored
             total_skipped += r.skipped
             total_failed += r.failed
 
         if total_failed > 0:
+            title = (
+                f"Ingest Completed with Errors: "
+                f"{total_stored} stored, {total_skipped} skipped, {total_failed} failed"
+            )
+        else:
+            title = f"Ingest Complete: {total_stored} stored, {total_skipped} skipped"
+
+        render_table(
+            title,
+            [("Stage", "bold"), ("Stored", "success"), ("Skipped", "dim"), ("Failed", "error")],
+            rows,
+        )
+
+        if total_failed > 0:
             print_error(
-                f"Ingest completed with errors: {total_stored} stored, "
-                f"{total_skipped} skipped, {total_failed} failed"
+                f"Total: {total_stored} stored, {total_skipped} skipped, {total_failed} failed"
             )
         else:
             print_success(
-                f"Ingest complete: {total_stored} stored, {total_skipped} skipped"
+                f"Total: {total_stored} stored, {total_skipped} skipped"
             )

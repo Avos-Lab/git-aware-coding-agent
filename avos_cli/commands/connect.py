@@ -23,7 +23,7 @@ from avos_cli.services.git_client import GitClient
 from avos_cli.services.github_client import GitHubClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success
+from avos_cli.utils.output import print_error, print_info, print_success, render_kv_panel
 
 _log = get_logger("commands.connect")
 
@@ -85,8 +85,14 @@ class ConnectOrchestrator:
             return self._last_exit_code
 
         self._write_config(repo_slug, memory_id)
-        print_success(f"Connected to {repo_slug}. Memory ID: {memory_id}")
-        print_info("Next step: run 'avos ingest' to import repository history.")
+        render_kv_panel(
+            f"Connected to {repo_slug}",
+            [
+                ("Memory ID", memory_id),
+                ("Next step", "avos ingest"),
+            ],
+            style="success",
+        )
         return 0
 
     def _validate_slug(self, slug: str) -> bool:

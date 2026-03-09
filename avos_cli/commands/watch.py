@@ -25,7 +25,7 @@ from avos_cli.config.manager import load_config
 from avos_cli.config.state import atomic_write, read_json_safe
 from avos_cli.exceptions import AvosError, ConfigurationNotInitializedError
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success, print_warning
+from avos_cli.utils.output import print_error, print_info, print_success, print_warning, render_kv_panel
 
 _log = get_logger("commands.watch")
 
@@ -153,9 +153,14 @@ class WatchOrchestrator:
             json.dumps(pid_state, indent=2),
         )
 
-        print_success(f"Watch started (PID {watcher_pid}).")
-        print_info("  Publishing WIP activity to team memory.")
-        print_info("  Run 'avos watch --stop' to stop.")
+        render_kv_panel(
+            f"Watch Started (PID {watcher_pid})",
+            [
+                ("Status", "Publishing WIP activity to team memory"),
+                ("Stop", "avos watch --stop"),
+            ],
+            style="success",
+        )
         return 0
 
     def _check_active_watch(self) -> str:

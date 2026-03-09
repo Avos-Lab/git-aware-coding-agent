@@ -28,7 +28,14 @@ from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.services.query_fallback_formatter import QueryFallbackFormatter
 from avos_cli.services.sanitization_service import SanitizationService
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success, print_warning
+from avos_cli.utils.output import (
+    print_error,
+    print_info,
+    print_success,
+    print_warning,
+    render_panel,
+    render_table,
+)
 
 _log = get_logger("commands.ask")
 
@@ -175,7 +182,6 @@ class AskOrchestrator:
         for w in warnings:
             print_warning(w)
 
-        # Extract answer text from structured response
         answer_text = synthesis_response.answer_text
         try:
             import json
@@ -185,12 +191,17 @@ class AskOrchestrator:
         except (json.JSONDecodeError, TypeError):
             pass
 
-        print_success("Answer:")
-        print_info(answer_text)
+        render_panel("Answer", answer_text, style="success")
 
         if grounded:
-            print_info("\nEvidence:")
+            evidence_rows: list[list[str]] = []
             for cit in grounded:
-                print_info(f"  [{cit.display_label}]")
+                note_id_short = cit.note_id[:10] + ".." if len(cit.note_id) > 12 else cit.note_id
+                evidence_rows.append([note_id_short, cit.display_label])
+            render_table(
+                f"Evidence ({len(grounded)} citations)",
+                [("Note ID", "dim"), ("Label", "")],
+                evidence_rows,
+            )
 
         return 0

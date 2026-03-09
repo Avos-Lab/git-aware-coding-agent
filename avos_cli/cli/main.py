@@ -171,21 +171,19 @@ def ask(
 ) -> None:
     """Ask a question about the repository and get an evidence-backed answer."""
     from avos_cli.commands.ask import AskOrchestrator
-    from avos_cli.config.manager import find_repo_root
-    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.config.manager import find_repo_root, load_config
+    from avos_cli.exceptions import (
+        ConfigurationNotInitializedError,
+        RepositoryContextError,
+    )
     from avos_cli.services.llm_client import LLMClient
     from avos_cli.services.memory_client import AvosMemoryClient
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
-    anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
-        raise typer.Exit(1)
-
-    if not anthropic_api_key:
-        print_error("[AUTH_ERROR] ANTHROPIC_API_KEY environment variable is required for LLM synthesis.")
         raise typer.Exit(1)
 
     try:
@@ -194,9 +192,27 @@ def ask(
         print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
         raise typer.Exit(1) from e
 
+    try:
+        config = load_config(repo_root)
+    except ConfigurationNotInitializedError:
+        print_error("[AUTH_ERROR] Repository not connected. Run 'avos connect org/repo' first.")
+        raise typer.Exit(1)
+
+    provider = config.llm.provider.lower()
+    if provider == "openai":
+        llm_api_key = os.environ.get("OPENAI_API_KEY", "")
+        if not llm_api_key:
+            print_error("[AUTH_ERROR] OPENAI_API_KEY environment variable is required for OpenAI.")
+            raise typer.Exit(1)
+    else:
+        llm_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not llm_api_key:
+            print_error("[AUTH_ERROR] ANTHROPIC_API_KEY environment variable is required for LLM synthesis.")
+            raise typer.Exit(1)
+
     orchestrator = AskOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
-        llm_client=LLMClient(api_key=anthropic_api_key),
+        llm_client=LLMClient(api_key=llm_api_key, provider=provider),
         repo_root=repo_root,
     )
     code = orchestrator.run("_/_", question)
@@ -209,21 +225,19 @@ def history(
 ) -> None:
     """Get a chronological history of a subject in the repository."""
     from avos_cli.commands.history import HistoryOrchestrator
-    from avos_cli.config.manager import find_repo_root
-    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.config.manager import find_repo_root, load_config
+    from avos_cli.exceptions import (
+        ConfigurationNotInitializedError,
+        RepositoryContextError,
+    )
     from avos_cli.services.llm_client import LLMClient
     from avos_cli.services.memory_client import AvosMemoryClient
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
-    anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
-        raise typer.Exit(1)
-
-    if not anthropic_api_key:
-        print_error("[AUTH_ERROR] ANTHROPIC_API_KEY environment variable is required for LLM synthesis.")
         raise typer.Exit(1)
 
     try:
@@ -232,9 +246,27 @@ def history(
         print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
         raise typer.Exit(1) from e
 
+    try:
+        config = load_config(repo_root)
+    except ConfigurationNotInitializedError:
+        print_error("[AUTH_ERROR] Repository not connected. Run 'avos connect org/repo' first.")
+        raise typer.Exit(1)
+
+    provider = config.llm.provider.lower()
+    if provider == "openai":
+        llm_api_key = os.environ.get("OPENAI_API_KEY", "")
+        if not llm_api_key:
+            print_error("[AUTH_ERROR] OPENAI_API_KEY environment variable is required for OpenAI.")
+            raise typer.Exit(1)
+    else:
+        llm_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not llm_api_key:
+            print_error("[AUTH_ERROR] ANTHROPIC_API_KEY environment variable is required for LLM synthesis.")
+            raise typer.Exit(1)
+
     orchestrator = HistoryOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
-        llm_client=LLMClient(api_key=anthropic_api_key),
+        llm_client=LLMClient(api_key=llm_api_key, provider=provider),
         repo_root=repo_root,
     )
     code = orchestrator.run("_/_", subject)
@@ -338,7 +370,11 @@ def watch(
 
 
 @app.command()
-def team() -> None:
+def team(
+    ctx: typer.Context,
+    detail: bool = typer.Option(False, "--detail", help="Show tree view with files and symbols."),
+    live: bool = typer.Option(False, "--live", help="Auto-refresh display every 30 seconds."),
+) -> None:
     """Show active team members and their current work."""
     from avos_cli.commands.team import TeamOrchestrator
     from avos_cli.config.manager import find_repo_root
@@ -358,17 +394,20 @@ def team() -> None:
         print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
         raise typer.Exit(1) from e
 
+    json_output = ctx.obj.get("json", False) if ctx.obj else False
     orchestrator = TeamOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         repo_root=repo_root,
     )
-    code = orchestrator.run()
+    code = orchestrator.run(detail=detail, live=live, json_output=json_output)
     raise typer.Exit(code)
 
 
 @app.command()
 def conflicts(
+    ctx: typer.Context,
     strict: bool = typer.Option(False, "--strict", help="Promote symbol overlaps to HIGH severity."),
+    live: bool = typer.Option(False, "--live", help="Auto-refresh display every 30 seconds."),
 ) -> None:
     """Detect potential merge conflicts with active team work."""
     from avos_cli.commands.conflicts import ConflictsOrchestrator
@@ -390,12 +429,13 @@ def conflicts(
         print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
         raise typer.Exit(1) from e
 
+    json_output = ctx.obj.get("json", False) if ctx.obj else False
     orchestrator = ConflictsOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         git_client=GitClient(),
         repo_root=repo_root,
     )
-    code = orchestrator.run(strict=strict)
+    code = orchestrator.run(strict=strict, live=live, json_output=json_output)
     raise typer.Exit(code)
 
 

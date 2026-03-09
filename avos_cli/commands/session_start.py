@@ -28,7 +28,7 @@ from avos_cli.exceptions import AvosError, ConfigurationNotInitializedError
 from avos_cli.services.git_client import GitClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success, print_warning
+from avos_cli.utils.output import print_error, print_info, print_success, print_warning, render_kv_panel
 
 _log = get_logger("commands.session_start")
 
@@ -130,10 +130,15 @@ class SessionStartOrchestrator:
             json.dumps(pid_state, indent=2),
         )
 
-        print_success(f"Session started: {session_id}")
-        print_info(f"  Goal: {sanitized_goal}")
-        print_info(f"  Branch: {branch}")
-        print_info("  Run 'avos session-end' when done.")
+        render_kv_panel(
+            f"Session Started: {session_id}",
+            [
+                ("Goal", sanitized_goal),
+                ("Branch", branch),
+                ("Next", "avos session-end"),
+            ],
+            style="success",
+        )
         return 0
 
     def _check_active_session(self) -> str:

@@ -26,7 +26,16 @@ from avos_cli.exceptions import AvosError, ConfigurationNotInitializedError
 from avos_cli.models.api import SearchHit
 from avos_cli.services.symbol_extractor import extract_symbols
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success, print_warning
+from avos_cli.utils.output import (
+    console,
+    is_interactive,
+    print_error,
+    print_info,
+    print_json,
+    print_success,
+    print_warning,
+    render_table,
+)
 from avos_cli.utils.time_helpers import is_artifact_active
 
 _log = get_logger("commands.conflicts")
@@ -100,15 +109,28 @@ class ConflictsOrchestrator:
         self._repo_root = repo_root
         self._avos_dir = repo_root / ".avos"
 
-    def run(self, strict: bool = False) -> int:
+    def run(
+        self,
+        strict: bool = False,
+        live: bool = False,
+        json_output: bool = False,
+    ) -> int:
         """Execute the conflict detection flow.
 
         Args:
             strict: If True, promote symbol overlaps (Tier-2) to HIGH severity.
+            live: Auto-refresh display every 30 seconds.
+            json_output: Emit JSON envelope instead of Rich output.
 
         Returns:
             Exit code: 0 success, 1 precondition, 2 external failure.
         """
+        if live:
+            return self._run_live(strict, json_output)
+        return self._run_once(strict, json_output)
+
+    def _run_once(self, strict: bool = False, json_output: bool = False) -> int:
+        """Single-shot conflict detection."""
         try:
             config = load_config(self._repo_root)
         except ConfigurationNotInitializedError as e:
@@ -171,7 +193,9 @@ class ConflictsOrchestrator:
         findings = self._sort_findings(findings)
 
         if not findings:
-            if not local_files:
+            if json_output:
+                print_json(success=True, data={"findings": [], "count": 0})
+            elif not local_files:
                 print_info("No local changes detected.")
             elif not peers:
                 print_info(
@@ -182,7 +206,68 @@ class ConflictsOrchestrator:
                 print_success("No conflicts detected with active team work.")
             return 0
 
-        self._render(findings, strict)
+        if json_output:
+            self._render_json(findings, strict)
+        else:
+            self._render(findings, strict)
+        return 0
+
+    def _run_live(self, strict: bool = False, json_output: bool = False) -> int:
+        """Auto-refreshing conflict detection using Rich Live."""
+        if json_output:
+            print_error("Live mode is not compatible with --json output.")
+            return 1
+        if not is_interactive():
+            print_error("Live mode requires an interactive terminal.")
+            return 1
+
+        from avos_cli.utils.output import render_live_loop
+
+        def _build_renderable() -> object:
+            from rich.table import Table as RichTable
+            try:
+                config = load_config(self._repo_root)
+                local_developer = config.developer or ""
+                if not local_developer:
+                    try:
+                        local_developer = self._git.user_name(self._repo_root)
+                    except Exception:
+                        local_developer = "unknown"
+                local_branch = self._git.current_branch(self._repo_root)
+                local_files = self._git.modified_files(self._repo_root)
+                local_symbols: set[str] = set()
+                for fp in local_files:
+                    local_symbols.update(extract_symbols(self._repo_root / fp, self._repo_root))
+                subsystem_mapping = load_subsystem_mapping(self._avos_dir)
+                local_subsystems: set[str] = set()
+                for fp in local_files:
+                    local_subsystems.update(resolve_subsystems(fp, subsystem_mapping))
+                result = self._memory.search(
+                    config.memory_id, "wip_activity", k=_WIP_SEARCH_K, mode="keyword"
+                )
+                remote_artifacts = self._parse_artifacts(result.results)
+                active = self._filter_active(remote_artifacts)
+                peers = self._exclude_self(active, local_developer, local_branch)
+                findings = self._compute_conflicts(
+                    peers=peers, local_files=set(local_files),
+                    local_symbols=local_symbols, local_subsystems=local_subsystems,
+                    subsystem_mapping=subsystem_mapping, strict=strict,
+                )
+                findings = [f for f in findings if f.evidence_count > 0]
+                findings = self._sort_findings(findings)
+            except Exception:
+                table = RichTable(title="Conflicts (error fetching)")
+                table.add_column("Status")
+                table.add_row("Could not fetch conflict data")
+                return table
+
+            return self._build_table(findings, strict)
+
+        try:
+            render_live_loop(_build_renderable, interval=30.0)
+        except RuntimeError as e:
+            print_error(str(e))
+            return 1
         return 0
 
     def _parse_artifacts(
@@ -354,22 +439,101 @@ class ConflictsOrchestrator:
         )
 
     def _render(self, findings: list[ConflictFinding], strict: bool) -> None:
-        """Render conflict findings output."""
+        """Render conflict findings as a Rich table."""
+        if is_interactive():
+            table = self._build_table(findings, strict)
+            console.print(table)
+        else:
+            high = sum(1 for f in findings if f.severity == "HIGH")
+            medium = sum(1 for f in findings if f.severity == "MEDIUM")
+            low = sum(1 for f in findings if f.severity == "LOW")
+            title = (
+                f"Conflicts Detected: {len(findings)} "
+                f"(HIGH: {high}, MEDIUM: {medium}, LOW: {low})"
+            )
+            if strict:
+                title += " [strict]"
+            render_table(
+                title,
+                [("Severity", ""), ("Tier", ""), ("Developer", ""), ("Branch", ""), ("Evidence", "")],
+                self._findings_to_rows(findings),
+            )
+
+    def _render_json(self, findings: list[ConflictFinding], strict: bool) -> None:
+        """Emit conflict findings as JSON envelope."""
+        items: list[dict[str, object]] = []
+        for f in findings:
+            items.append({
+                "severity": f.severity,
+                "tier": f.tier,
+                "developer": f.remote_developer,
+                "branch": f.remote_branch,
+                "evidence_files": f.evidence_files,
+                "evidence_symbols": f.evidence_symbols,
+                "evidence_subsystems": f.evidence_subsystems,
+                "explanation": f.explanation,
+            })
+        print_json(success=True, data={
+            "findings": items,
+            "count": len(items),
+            "strict": strict,
+        })
+
+    def _build_table(self, findings: list[ConflictFinding], strict: bool) -> object:
+        """Build a Rich Table for conflict findings."""
+        from rich.table import Table as RichTable
+
         high = sum(1 for f in findings if f.severity == "HIGH")
         medium = sum(1 for f in findings if f.severity == "MEDIUM")
         low = sum(1 for f in findings if f.severity == "LOW")
-
-        print_warning(
-            f"Conflicts detected: {len(findings)} "
+        title = (
+            f"Conflicts Detected: {len(findings)} "
             f"(HIGH: {high}, MEDIUM: {medium}, LOW: {low})"
         )
         if strict:
-            print_info("  [strict mode: symbol overlaps promoted to HIGH]")
+            title += " [strict]"
+
+        table = RichTable(title=title, pad_edge=True)
+        table.add_column("Severity", style="bold")
+        table.add_column("Tier")
+        table.add_column("Developer")
+        table.add_column("Branch", style="dim")
+        table.add_column("Evidence")
+
+        _tier_labels = {1: "File", 2: "Symbol", 3: "Subsystem"}
+        _severity_styles = {"HIGH": "high", "MEDIUM": "medium", "LOW": "low"}
 
         for f in findings:
-            print_info(f"\n  [{f.severity}] Tier-{f.tier} conflict with {f.remote_developer}")
-            print_info(f"    Branch: {f.remote_branch}")
-            print_info(f"    {f.explanation}")
+            sev_style = _severity_styles.get(f.severity, "")
+            tier_label = _tier_labels.get(f.tier, str(f.tier))
+            evidence_parts: list[str] = []
+            evidence_parts.extend(f.evidence_files)
+            evidence_parts.extend(f.evidence_symbols)
+            evidence_parts.extend(f.evidence_subsystems)
+            evidence_str = ", ".join(evidence_parts) if evidence_parts else f.explanation
+            table.add_row(
+                f"[{sev_style}]{f.severity}[/{sev_style}]",
+                tier_label,
+                f.remote_developer,
+                f.remote_branch,
+                evidence_str,
+            )
+        return table
+
+    @staticmethod
+    def _findings_to_rows(findings: list[ConflictFinding]) -> list[list[str]]:
+        """Convert findings to flat table rows for plain text."""
+        _tier_labels = {1: "File", 2: "Symbol", 3: "Subsystem"}
+        rows: list[list[str]] = []
+        for f in findings:
+            tier_label = _tier_labels.get(f.tier, str(f.tier))
+            evidence_parts: list[str] = []
+            evidence_parts.extend(f.evidence_files)
+            evidence_parts.extend(f.evidence_symbols)
+            evidence_parts.extend(f.evidence_subsystems)
+            evidence_str = ", ".join(evidence_parts) if evidence_parts else f.explanation
+            rows.append([f.severity, tier_label, f.remote_developer, f.remote_branch, evidence_str])
+        return rows
 
 
 def _parse_wip_content(content: str) -> dict[str, str] | None:

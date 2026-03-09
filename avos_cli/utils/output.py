@@ -1,17 +1,23 @@
 """Terminal output formatting for AVOS CLI.
 
-Uses Rich for interactive terminals (progress bars, colored status),
-with plain text fallback for piped/non-TTY output.
+Uses Rich for interactive terminals (tables, panels, trees, progress bars,
+colored status), with plain text fallback for piped/non-TTY output.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+import time
+from collections.abc import Callable
+from typing import Any
 
 from rich.console import Console
+from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 from rich.theme import Theme
+from rich.tree import Tree
 
 _theme = Theme(
     {
@@ -20,6 +26,9 @@ _theme = Theme(
         "warning": "bold yellow",
         "info": "bold blue",
         "dim": "dim",
+        "high": "bold red",
+        "medium": "bold yellow",
+        "low": "bold cyan",
     }
 )
 
@@ -127,3 +136,116 @@ def create_progress(description: str = "Processing...", suppress: bool = False) 
         TextColumn("[progress.description]{task.description}"),
         console=console,
     )
+
+
+def render_table(
+    title: str,
+    columns: list[tuple[str, str]],
+    rows: list[list[str]],
+) -> None:
+    """Render a Rich table or plain-text equivalent.
+
+    Args:
+        title: Table title displayed above the table.
+        columns: List of (header_text, style) tuples.
+        rows: List of row data (each row is a list of strings matching columns).
+    """
+    if is_interactive():
+        table = Table(title=title, show_lines=False, pad_edge=True)
+        for header, style in columns:
+            table.add_column(header, style=style)
+        for row in rows:
+            table.add_row(*row)
+        console.print(table)
+    else:
+        print(f"\n{title}")
+        headers = [h for h, _ in columns]
+        print("  " + " | ".join(headers))
+        print("  " + "-+-".join("-" * len(h) for h in headers))
+        for row in rows:
+            print("  " + " | ".join(row))
+
+
+def render_panel(title: str, content: str, style: str = "info") -> None:
+    """Render a Rich panel or plain-text equivalent.
+
+    Args:
+        title: Panel title.
+        content: Panel body text.
+        style: Border color style name.
+    """
+    if is_interactive():
+        console.print(Panel(content, title=title, border_style=style, expand=False))
+    else:
+        print(f"\n--- {title} ---")
+        print(content)
+        print("---")
+
+
+def render_tree(label: str, children: list[tuple[str, list[str]]]) -> None:
+    """Render a Rich tree or plain-text indented equivalent.
+
+    Args:
+        label: Root label for the tree.
+        children: List of (branch_label, [leaf_labels]) tuples.
+    """
+    if is_interactive():
+        tree = Tree(f"[bold]{label}[/bold]")
+        for branch_label, leaves in children:
+            branch = tree.add(f"[info]{branch_label}[/info]")
+            for leaf in leaves:
+                branch.add(leaf)
+        console.print(tree)
+    else:
+        print(f"\n{label}")
+        for branch_label, leaves in children:
+            print(f"  {branch_label}")
+            for leaf in leaves:
+                print(f"    {leaf}")
+
+
+def render_kv_panel(title: str, pairs: list[tuple[str, str]], style: str = "info") -> None:
+    """Render a key-value panel (Rich table inside a panel, or plain text).
+
+    Args:
+        title: Panel title.
+        pairs: List of (key, value) tuples.
+        style: Border color style name.
+    """
+    if is_interactive():
+        table = Table(show_header=False, show_edge=False, pad_edge=False, box=None)
+        table.add_column("Key", style="bold")
+        table.add_column("Value")
+        for k, v in pairs:
+            table.add_row(k, v)
+        console.print(Panel(table, title=title, border_style=style, expand=False))
+    else:
+        print(f"\n--- {title} ---")
+        for k, v in pairs:
+            print(f"  {k}: {v}")
+
+
+def render_live_loop(
+    build_fn: Callable[[], Any],
+    interval: float = 30.0,
+) -> None:
+    """Run a Rich Live display that refreshes on a timer.
+
+    Blocks until KeyboardInterrupt (Ctrl+C). Non-TTY raises RuntimeError.
+
+    Args:
+        build_fn: Callable returning a Rich renderable (Table, Panel, etc.).
+        interval: Seconds between refreshes.
+    """
+    if not is_interactive():
+        raise RuntimeError("Live mode requires an interactive terminal.")
+
+    from rich.live import Live
+
+    with Live(build_fn(), console=console, refresh_per_second=1) as live:
+        try:
+            while True:
+                time.sleep(interval)
+                live.update(build_fn())
+        except KeyboardInterrupt:
+            pass
