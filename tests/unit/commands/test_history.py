@@ -169,3 +169,62 @@ class TestGroundingFailure:
             mock_cfg.return_value = MagicMock(memory_id="repo:org/repo", llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"))
             code = orch.run("org/repo", "subject")
         assert code == 0
+
+
+class TestJsonOutputMode:
+    """Tests for --json mode output."""
+
+    def test_json_mode_invalid_slug_emits_json_error(self, capsys):
+        orch = _make_orchestrator()
+        code = orch.run("invalid-slug", "subject", json_output=True)
+        assert code == 1
+        captured = capsys.readouterr()
+        out = captured.out
+        assert '"success": false' in out or '"success":false' in out
+        assert "REPOSITORY_CONTEXT_ERROR" in out
+
+    def test_json_mode_config_not_initialized_emits_json_error(self, capsys):
+        orch = _make_orchestrator()
+        with patch("avos_cli.commands.history.load_config", side_effect=ConfigurationNotInitializedError()):
+            code = orch.run("org/repo", "subject", json_output=True)
+        assert code == 1
+        captured = capsys.readouterr()
+        out = captured.out
+        assert '"success": false' in out or '"success":false' in out
+        assert "CONFIG_NOT_INITIALIZED" in out
+
+    def test_json_mode_empty_results_emits_json_success(self, capsys):
+        mc = MagicMock()
+        mc.search.return_value = SearchResult(results=[], total_count=0)
+        lc = MagicMock()
+
+        orch = _make_orchestrator(memory_client=mc, llm_client=lc)
+        with patch("avos_cli.commands.history.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(memory_id="repo:org/repo", llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"))
+            code = orch.run("org/repo", "payment system", json_output=True)
+        assert code == 0
+        captured = capsys.readouterr()
+        out = captured.out
+        assert '"success": true' in out or '"success":true' in out
+        assert "avos.history.v1" in out
+
+    def test_json_mode_no_reply_service_emits_error(self, capsys):
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result(5)
+        lc = MagicMock()
+        lc.synthesize.return_value = SynthesisResponse(
+            answer_text=json.dumps({
+                "answer": "Payment system evolved.",
+                "citations": [{"note_id": "note-0"}, {"note_id": "note-1"}],
+            }),
+        )
+
+        orch = _make_orchestrator(memory_client=mc, llm_client=lc)
+        with patch("avos_cli.commands.history.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(memory_id="repo:org/repo", llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"))
+            code = orch.run("org/repo", "payment system", json_output=True)
+        assert code == 0
+        captured = capsys.readouterr()
+        out = captured.out
+        assert '"success": false' in out or '"success":false' in out
+        assert "REPLY_SERVICE_UNAVAILABLE" in out

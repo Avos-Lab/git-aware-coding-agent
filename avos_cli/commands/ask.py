@@ -7,6 +7,7 @@ citation grounding, and renders answer or deterministic fallback.
 
 from __future__ import annotations
 
+import json as json_module
 from pathlib import Path
 
 from avos_cli.config.manager import load_config
@@ -19,6 +20,7 @@ from avos_cli.models.query import (
     FallbackReason,
     QueryMode,
     RetrievedArtifact,
+    SanitizedArtifact,
     SynthesisRequest,
 )
 from avos_cli.services.citation_validator import CitationValidator
@@ -26,12 +28,17 @@ from avos_cli.services.context_budget_service import ContextBudgetService
 from avos_cli.services.llm_client import LLMClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.services.query_fallback_formatter import QueryFallbackFormatter
+from avos_cli.services.reply_output_service import (
+    ReplyOutputService,
+    dumb_format_ask,
+    parse_ask_response,
+)
 from avos_cli.services.sanitization_service import SanitizationService
 from avos_cli.utils.logger import get_logger
 from avos_cli.utils.output import (
     print_error,
     print_info,
-    print_success,
+    print_json,
     print_warning,
     render_panel,
     render_table,
@@ -45,6 +52,78 @@ _MIN_GROUNDED_CITATIONS = 2
 _SANITIZATION_CONFIDENCE_THRESHOLD = 70
 
 
+def _build_raw_output(artifacts: list[SanitizedArtifact]) -> str:
+    """Build raw artifact string for reply layer (matches QueryFallbackFormatter format)."""
+    lines: list[str] = []
+    for art in artifacts:
+        lines.append(f"[{art.note_id}] ({art.created_at})\n{art.content}")
+        lines.append("---")
+    return "\n".join(lines)
+
+
+def _render_reply_output(
+    question: str,
+    raw_output: str,
+    reply_service: ReplyOutputService | None,
+    json_output: bool = False,
+) -> None:
+    """Render ask output via reply layer or raw. Used for both success and fallback paths.
+
+    Args:
+        question: The user's question.
+        raw_output: Raw artifact content string.
+        reply_service: Optional reply output service for decorated terminal output.
+        json_output: If True, emit JSON via converter agent instead of human UI.
+    """
+    if reply_service:
+        decorated = reply_service.format_ask(question, raw_output)
+        output = decorated if decorated else dumb_format_ask(raw_output)
+
+        if json_output:
+            json_str = reply_service.format_ask_json(output)
+            if json_str:
+                try:
+                    parsed = json_module.loads(json_str)
+                    print_json(success=True, data=parsed, error=None)
+                    return
+                except json_module.JSONDecodeError:
+                    _log.warning("JSON converter returned invalid JSON")
+            print_json(
+                success=False,
+                data=None,
+                error={
+                    "code": "JSON_CONVERSION_FAILED",
+                    "message": "Failed to convert ask output to JSON",
+                    "hint": "Check REPLY_MODEL configuration",
+                    "retryable": True,
+                },
+            )
+            return
+
+        answer, evidence = parse_ask_response(output)
+        render_panel("Answer", answer, style="success")
+        if evidence:
+            render_table(
+                f"Evidence ({len(evidence)} citations)",
+                [("Reference", "")],
+                [[line] for line in evidence],
+            )
+    else:
+        if json_output:
+            print_json(
+                success=False,
+                data=None,
+                error={
+                    "code": "REPLY_SERVICE_UNAVAILABLE",
+                    "message": "JSON output requires REPLY_MODEL configuration",
+                    "hint": "Set REPLY_MODEL, REPLY_MODEL_URL, REPLY_MODEL_API_KEY environment variables",
+                    "retryable": False,
+                },
+            )
+            return
+        print_info(raw_output)
+
+
 class AskOrchestrator:
     """Orchestrates the `avos ask` command.
 
@@ -55,6 +134,7 @@ class AskOrchestrator:
         memory_client: Avos Memory API client.
         llm_client: LLM synthesis client.
         repo_root: Path to the repository root.
+        reply_service: Optional reply output service for decorated terminal output.
     """
 
     def __init__(
@@ -62,36 +142,75 @@ class AskOrchestrator:
         memory_client: AvosMemoryClient,
         llm_client: LLMClient,
         repo_root: Path,
+        reply_service: ReplyOutputService | None = None,
     ) -> None:
         self._memory = memory_client
         self._llm = llm_client
         self._repo_root = repo_root
+        self._reply_service = reply_service
         self._sanitizer = SanitizationService()
         self._budget = ContextBudgetService()
         self._citation_validator = CitationValidator()
         self._fallback_formatter = QueryFallbackFormatter()
 
-    def run(self, repo_slug: str, question: str) -> int:
+    def run(self, repo_slug: str, question: str, json_output: bool = False) -> int:
         """Execute the ask flow.
 
         Args:
             repo_slug: Repository identifier in 'org/repo' format.
             question: Natural language question from the user.
+            json_output: If True, emit JSON output instead of human UI.
 
         Returns:
             Exit code: 0 (success/fallback), 1 (precondition), 2 (hard error).
         """
         if "/" not in repo_slug:
-            print_error("[REPOSITORY_CONTEXT_ERROR] Invalid repo slug. Expected 'org/repo'.")
+            if json_output:
+                print_json(
+                    success=False,
+                    data=None,
+                    error={
+                        "code": "REPOSITORY_CONTEXT_ERROR",
+                        "message": "Invalid repo slug. Expected 'org/repo'.",
+                        "hint": None,
+                        "retryable": False,
+                    },
+                )
+            else:
+                print_error("[REPOSITORY_CONTEXT_ERROR] Invalid repo slug. Expected 'org/repo'.")
             return 1
 
         try:
             config = load_config(self._repo_root)
         except ConfigurationNotInitializedError as e:
-            print_error(f"[CONFIG_NOT_INITIALIZED] {e}")
+            if json_output:
+                print_json(
+                    success=False,
+                    data=None,
+                    error={
+                        "code": "CONFIG_NOT_INITIALIZED",
+                        "message": str(e),
+                        "hint": "Run 'avos connect org/repo' first.",
+                        "retryable": False,
+                    },
+                )
+            else:
+                print_error(f"[CONFIG_NOT_INITIALIZED] {e}")
             return 1
         except AvosError as e:
-            print_error(f"[{e.code}] {e}")
+            if json_output:
+                print_json(
+                    success=False,
+                    data=None,
+                    error={
+                        "code": e.code,
+                        "message": str(e),
+                        "hint": getattr(e, "hint", None),
+                        "retryable": getattr(e, "retryable", False),
+                    },
+                )
+            else:
+                print_error(f"[{e.code}] {e}")
             return 1
 
         memory_id = config.memory_id
@@ -102,12 +221,37 @@ class AskOrchestrator:
                 memory_id=memory_id, query=question, k=_ASK_K, mode=_ASK_SEARCH_MODE
             )
         except AvosError as e:
-            print_error(f"[{e.code}] Memory search failed: {e}")
+            if json_output:
+                print_json(
+                    success=False,
+                    data=None,
+                    error={
+                        "code": e.code,
+                        "message": f"Memory search failed: {e}",
+                        "hint": getattr(e, "hint", None),
+                        "retryable": getattr(e, "retryable", True),
+                    },
+                )
+            else:
+                print_error(f"[{e.code}] Memory search failed: {e}")
             return 2
 
         # Stage 2: Empty check
         if not search_result.results:
-            print_info("No matching evidence found in repository memory. Try a different question or ingest more data.")
+            if json_output:
+                print_json(
+                    success=True,
+                    data={
+                        "format": "avos.ask.v1",
+                        "raw_text": "",
+                        "answer": {"text": "No matching evidence found in repository memory."},
+                        "evidence": {"is_none": True, "items": [], "unparsed_lines": []},
+                        "parse_warnings": [],
+                    },
+                    error=None,
+                )
+            else:
+                print_info("No matching evidence found in repository memory. Try a different question or ingest more data.")
             return 0
 
         # Convert to internal model
@@ -129,8 +273,9 @@ class AskOrchestrator:
             fallback_output = self._fallback_formatter.format_ask_fallback(
                 sanitization_result.artifacts, FallbackReason.SAFETY_BLOCK
             )
-            print_warning("Content safety check insufficient for synthesis.")
-            print_info(fallback_output)
+            if not json_output:
+                print_warning("Content safety check insufficient for synthesis.")
+            _render_reply_output(question, fallback_output, self._reply_service, json_output)
             return 0
 
         # Stage 4: Budget pack
@@ -140,8 +285,9 @@ class AskOrchestrator:
             fallback_output = self._fallback_formatter.format_ask_fallback(
                 sanitization_result.artifacts, FallbackReason.BUDGET_EXHAUSTED
             )
-            print_warning("Insufficient evidence for synthesis.")
-            print_info(fallback_output)
+            if not json_output:
+                print_warning("Insufficient evidence for synthesis.")
+            _render_reply_output(question, fallback_output, self._reply_service, json_output)
             return 0
 
         # Stage 5: Synthesize
@@ -160,8 +306,9 @@ class AskOrchestrator:
             fallback_output = self._fallback_formatter.format_ask_fallback(
                 sanitization_result.artifacts, FallbackReason.LLM_UNAVAILABLE
             )
-            print_warning("LLM synthesis unavailable. Showing raw evidence.")
-            print_info(fallback_output)
+            if not json_output:
+                print_warning("LLM synthesis unavailable. Showing raw evidence.")
+            _render_reply_output(question, fallback_output, self._reply_service, json_output)
             return 0
 
         # Stage 6: Validate citations
@@ -174,34 +321,52 @@ class AskOrchestrator:
             fallback_output = self._fallback_formatter.format_ask_fallback(
                 sanitization_result.artifacts, FallbackReason.GROUNDING_FAILED
             )
-            print_warning("Citation grounding insufficient. Showing raw evidence.")
-            print_info(fallback_output)
+            if not json_output:
+                print_warning("Citation grounding insufficient. Showing raw evidence.")
+            _render_reply_output(question, fallback_output, self._reply_service, json_output)
             return 0
 
         # Stage 7: Render
-        for w in warnings:
-            print_warning(w)
+        if not json_output:
+            for w in warnings:
+                print_warning(w)
 
-        answer_text = synthesis_response.answer_text
-        try:
-            import json
-            parsed = json.loads(answer_text)
-            if isinstance(parsed, dict) and "answer" in parsed:
-                answer_text = parsed["answer"]
-        except (json.JSONDecodeError, TypeError):
-            pass
+        if self._reply_service:
+            raw_output = _build_raw_output(budget_result.included)
+            _render_reply_output(question, raw_output, self._reply_service, json_output)
+        else:
+            if json_output:
+                print_json(
+                    success=False,
+                    data=None,
+                    error={
+                        "code": "REPLY_SERVICE_UNAVAILABLE",
+                        "message": "JSON output requires REPLY_MODEL configuration",
+                        "hint": "Set REPLY_MODEL, REPLY_MODEL_URL, REPLY_MODEL_API_KEY environment variables",
+                        "retryable": False,
+                    },
+                )
+                return 0
 
-        render_panel("Answer", answer_text, style="success")
+            answer_text = synthesis_response.answer_text
+            try:
+                parsed = json_module.loads(answer_text)
+                if isinstance(parsed, dict) and "answer" in parsed:
+                    answer_text = parsed["answer"]
+            except (json_module.JSONDecodeError, TypeError):
+                pass
 
-        if grounded:
-            evidence_rows: list[list[str]] = []
-            for cit in grounded:
-                note_id_short = cit.note_id[:10] + ".." if len(cit.note_id) > 12 else cit.note_id
-                evidence_rows.append([note_id_short, cit.display_label])
-            render_table(
-                f"Evidence ({len(grounded)} citations)",
-                [("Note ID", "dim"), ("Label", "")],
-                evidence_rows,
-            )
+            render_panel("Answer", answer_text, style="success")
+
+            if grounded:
+                evidence_rows: list[list[str]] = []
+                for cit in grounded:
+                    note_id_short = cit.note_id[:10] + ".." if len(cit.note_id) > 12 else cit.note_id
+                    evidence_rows.append([note_id_short, cit.display_label])
+                render_table(
+                    f"Evidence ({len(grounded)} citations)",
+                    [("Note ID", "dim"), ("Label", "")],
+                    evidence_rows,
+                )
 
         return 0

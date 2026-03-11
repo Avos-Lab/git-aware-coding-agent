@@ -40,8 +40,9 @@ def configured_repo(git_repo: Path) -> Path:
         "api_url": "",
         "connected_at": "2026-03-06T00:00:00+00:00",
         "memory_id": "repo:testorg/testrepo",
+        "memory_id_session": "repo:testorg/testrepo-session",
         "repo": "testorg/testrepo",
-        "schema_version": "1",
+        "schema_version": "2",
     }
     (avos / "config.json").write_text(json.dumps(config, indent=2, sort_keys=True))
     (git_repo / "README.md").write_text("# Test\n")
@@ -268,10 +269,10 @@ class TestAskCLI:
             result = runner.invoke(app, ["ask", "How does auth work?"])
         assert result.exit_code == 1
 
-    def test_missing_anthropic_key_exits_1(self, git_repo: Path):
+    def test_missing_anthropic_key_exits_1(self, configured_repo: Path):
         with (
             _env_patch({"ANTHROPIC_API_KEY": ""}),
-            patch("avos_cli.config.manager.find_repo_root", return_value=git_repo),
+            patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
         ):
             result = runner.invoke(app, ["ask", "How does auth work?"])
         assert result.exit_code == 1
@@ -304,6 +305,41 @@ class TestAskCLI:
             result = runner.invoke(app, ["ask", "How does auth work?"])
         assert result.exit_code == 0
 
+    def test_ask_json_mode_empty_results(self, configured_repo: Path):
+        mem_m = MagicMock()
+        mem_m.search.return_value = SearchResult(results=[], total_count=0)
+        with (
+            _env_patch(),
+            patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
+            patch("avos_cli.services.memory_client.AvosMemoryClient", return_value=mem_m),
+            patch("avos_cli.services.llm_client.LLMClient"),
+        ):
+            result = runner.invoke(app, ["--json", "ask", "How does auth work?"])
+        assert result.exit_code == 0
+        assert '"success": true' in result.output or '"success":true' in result.output
+        assert "avos.ask.v1" in result.output
+
+
+class TestSessionAskCLI:
+    """Tests that exercise `avos session-ask` through the CLI entrypoint."""
+
+    def test_session_ask_help_shows(self):
+        result = runner.invoke(app, ["session-ask", "--help"])
+        assert result.exit_code == 0
+        assert "question" in result.output.lower() or "QUESTION" in result.output
+
+    def test_session_ask_empty_results(self, configured_repo: Path):
+        mem_m = MagicMock()
+        mem_m.search.return_value = SearchResult(results=[], total_count=0)
+        with (
+            _env_patch(),
+            patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
+            patch("avos_cli.services.memory_client.AvosMemoryClient", return_value=mem_m),
+            patch("avos_cli.services.llm_client.LLMClient"),
+        ):
+            result = runner.invoke(app, ["session-ask", "What is the team working on?"])
+        assert result.exit_code == 0
+
 
 class TestHistoryCLI:
     """Tests that exercise `avos history` through the CLI entrypoint."""
@@ -316,10 +352,10 @@ class TestHistoryCLI:
             result = runner.invoke(app, ["history", "payment system"])
         assert result.exit_code == 1
 
-    def test_missing_anthropic_key_exits_1(self, git_repo: Path):
+    def test_missing_anthropic_key_exits_1(self, configured_repo: Path):
         with (
             _env_patch({"ANTHROPIC_API_KEY": ""}),
-            patch("avos_cli.config.manager.find_repo_root", return_value=git_repo),
+            patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
         ):
             result = runner.invoke(app, ["history", "payment system"])
         assert result.exit_code == 1
@@ -341,6 +377,20 @@ class TestHistoryCLI:
         ):
             result = runner.invoke(app, ["history", "payment system"])
         assert result.exit_code == 0
+
+    def test_history_json_mode_empty_results(self, configured_repo: Path):
+        mem_m = MagicMock()
+        mem_m.search.return_value = SearchResult(results=[], total_count=0)
+        with (
+            _env_patch(),
+            patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
+            patch("avos_cli.services.memory_client.AvosMemoryClient", return_value=mem_m),
+            patch("avos_cli.services.llm_client.LLMClient"),
+        ):
+            result = runner.invoke(app, ["--json", "history", "payment system"])
+        assert result.exit_code == 0
+        assert '"success": true' in result.output or '"success":true' in result.output
+        assert "avos.history.v1" in result.output
 
 
 class TestSessionStartCLI:
@@ -374,6 +424,7 @@ class TestSessionStartCLI:
     def test_session_start_happy_path(self, configured_repo: Path):
         git_m = MagicMock()
         git_m.current_branch.return_value = "main"
+        git_m.is_worktree.return_value = False
         mem_m = MagicMock()
         with (
             _env_patch(),
@@ -425,7 +476,7 @@ class TestSessionEndCLI:
             "goal": "Test goal",
             "start_time": "2026-03-07T10:00:00+00:00",
             "branch": "main",
-            "memory_id": "repo:testorg/testrepo",
+            "memory_id": "repo:testorg/testrepo-session",
         }
         (avos_dir / "session.json").write_text(json.dumps(session))
         pid_data = {"pid": 999999, "started_at": "2026-03-07T10:00:00+00:00", "session_id": "sess_test123"}

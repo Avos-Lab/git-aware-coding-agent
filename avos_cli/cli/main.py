@@ -197,6 +197,7 @@ def ingest(
 
 @app.command()
 def ask(
+    ctx: typer.Context,
     question: str = typer.Argument(..., help="Natural language question about the repository."),
 ) -> None:
     """Ask a question about the repository and get an evidence-backed answer."""
@@ -208,6 +209,8 @@ def ask(
     )
     from avos_cli.services.llm_client import LLMClient
     from avos_cli.services.memory_client import AvosMemoryClient
+
+    json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
@@ -247,7 +250,7 @@ def ask(
         repo_root=repo_root,
         reply_service=reply_service,
     )
-    code = orchestrator.run("_/_", question)
+    code = orchestrator.run("_/_", question, json_output=json_output)
     raise typer.Exit(code)
 
 
@@ -311,6 +314,7 @@ def session_ask(
 
 @app.command()
 def history(
+    ctx: typer.Context,
     subject: str = typer.Argument(..., help="Subject or topic for chronological history."),
 ) -> None:
     """Get a chronological history of a subject in the repository."""
@@ -322,6 +326,8 @@ def history(
     )
     from avos_cli.services.llm_client import LLMClient
     from avos_cli.services.memory_client import AvosMemoryClient
+
+    json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
@@ -361,7 +367,7 @@ def history(
         repo_root=repo_root,
         reply_service=reply_service,
     )
-    code = orchestrator.run("_/_", subject)
+    code = orchestrator.run("_/_", subject, json_output=json_output)
     raise typer.Exit(code)
 
 
@@ -433,109 +439,6 @@ def session_end() -> None:
     raise typer.Exit(code)
 
 
-@app.command()
-def watch(
-    stop: bool = typer.Option(False, "--stop", help="Stop the active watch process."),
-) -> None:
-    """Watch for file changes and publish WIP activity to team memory."""
-    from avos_cli.commands.watch import WatchOrchestrator
-    from avos_cli.config.manager import find_repo_root
-    from avos_cli.exceptions import RepositoryContextError
-    from avos_cli.services.git_client import GitClient
-    from avos_cli.services.memory_client import AvosMemoryClient
-
-    api_key = os.environ.get("AVOS_API_KEY", "")
-    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
-
-    if not api_key:
-        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
-        raise typer.Exit(1)
-
-    try:
-        repo_root = find_repo_root(Path.cwd())
-    except RepositoryContextError as e:
-        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
-        raise typer.Exit(1) from e
-
-    orchestrator = WatchOrchestrator(
-        git_client=GitClient(),
-        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
-        repo_root=repo_root,
-    )
-    code = orchestrator.run(stop=stop)
-    raise typer.Exit(code)
-
-
-@app.command()
-def team(
-    ctx: typer.Context,
-    detail: bool = typer.Option(False, "--detail", help="Show tree view with files and symbols."),
-    live: bool = typer.Option(False, "--live", help="Auto-refresh display every 30 seconds."),
-) -> None:
-    """Show active team members and their current work."""
-    from avos_cli.commands.team import TeamOrchestrator
-    from avos_cli.config.manager import find_repo_root
-    from avos_cli.exceptions import RepositoryContextError
-    from avos_cli.services.memory_client import AvosMemoryClient
-
-    api_key = os.environ.get("AVOS_API_KEY", "")
-    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
-
-    if not api_key:
-        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
-        raise typer.Exit(1)
-
-    try:
-        repo_root = find_repo_root(Path.cwd())
-    except RepositoryContextError as e:
-        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
-        raise typer.Exit(1) from e
-
-    json_output = ctx.obj.get("json", False) if ctx.obj else False
-    orchestrator = TeamOrchestrator(
-        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
-        repo_root=repo_root,
-    )
-    code = orchestrator.run(detail=detail, live=live, json_output=json_output)
-    raise typer.Exit(code)
-
-
-@app.command()
-def conflicts(
-    ctx: typer.Context,
-    strict: bool = typer.Option(False, "--strict", help="Promote symbol overlaps to HIGH severity."),
-    live: bool = typer.Option(False, "--live", help="Auto-refresh display every 30 seconds."),
-) -> None:
-    """Detect potential merge conflicts with active team work."""
-    from avos_cli.commands.conflicts import ConflictsOrchestrator
-    from avos_cli.config.manager import find_repo_root
-    from avos_cli.exceptions import RepositoryContextError
-    from avos_cli.services.git_client import GitClient
-    from avos_cli.services.memory_client import AvosMemoryClient
-
-    api_key = os.environ.get("AVOS_API_KEY", "")
-    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
-
-    if not api_key:
-        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
-        raise typer.Exit(1)
-
-    try:
-        repo_root = find_repo_root(Path.cwd())
-    except RepositoryContextError as e:
-        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
-        raise typer.Exit(1) from e
-
-    json_output = ctx.obj.get("json", False) if ctx.obj else False
-    orchestrator = ConflictsOrchestrator(
-        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
-        git_client=GitClient(),
-        repo_root=repo_root,
-    )
-    code = orchestrator.run(strict=strict, live=live, json_output=json_output)
-    raise typer.Exit(code)
-
-
 @app.command(name="worktree-init")
 def worktree_init() -> None:
     """Initialize avos in an existing git worktree by copying config from a sibling."""
@@ -593,6 +496,88 @@ def worktree_add(
         repo_root=repo_root,
     )
     code = orchestrator.run(path=path, branch=branch, goal=goal, agent=agent)
+    raise typer.Exit(code)
+
+
+@app.command(name="hook-install")
+def hook_install(
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite existing pre-push hook."
+    ),
+) -> None:
+    """Install git hook for automatic commit sync on push."""
+    from avos_cli.commands.hook_install import HookInstallOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.git_client import GitClient
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = HookInstallOrchestrator(
+        git_client=GitClient(),
+        repo_root=repo_root,
+    )
+    code = orchestrator.run(force=force)
+    raise typer.Exit(code)
+
+
+@app.command(name="hook-uninstall")
+def hook_uninstall() -> None:
+    """Remove the avos pre-push git hook."""
+    from avos_cli.commands.hook_install import HookUninstallOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = HookUninstallOrchestrator(repo_root=repo_root)
+    code = orchestrator.run()
+    raise typer.Exit(code)
+
+
+@app.command(name="hook-sync", hidden=True)
+def hook_sync(
+    old_sha: str = typer.Argument(..., help="Base commit SHA (remote has this)."),
+    new_sha: str = typer.Argument(..., help="Target commit SHA (pushing this)."),
+) -> None:
+    """Sync commits to Avos Memory (called by pre-push hook)."""
+    from avos_cli.commands.hook_sync import HookSyncOrchestrator
+    from avos_cli.config.hash_store import IngestHashStore
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.git_client import GitClient
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+
+    if not api_key:
+        return
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError:
+        return
+
+    avos_dir = repo_root / ".avos"
+    hash_store = IngestHashStore(avos_dir)
+    hash_store.load()
+
+    orchestrator = HookSyncOrchestrator(
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        git_client=GitClient(),
+        hash_store=hash_store,
+        repo_root=repo_root,
+    )
+    code = orchestrator.run(old_sha, new_sha)
     raise typer.Exit(code)
 
 
