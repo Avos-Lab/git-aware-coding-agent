@@ -15,9 +15,19 @@ from dotenv import load_dotenv
 from avos_cli import __version__
 from avos_cli.utils.output import print_error
 
-# Load environment variables from .env automatically (without overriding
-# variables already exported in the shell).
+# Load environment variables: cwd first, then package root (editable install),
+# then ~/.avos/.env. Later loads do not override existing vars.
 load_dotenv()
+try:
+    _pkg_root = Path(__file__).resolve().parent.parent.parent
+    _pkg_env = _pkg_root / ".env"
+    if _pkg_env.exists():
+        load_dotenv(_pkg_env)
+except Exception:
+    pass
+_avos_home = Path.home() / ".avos"
+if (_avos_home / ".env").exists():
+    load_dotenv(_avos_home / ".env")
 
 app = typer.Typer(
     name="avos",
@@ -32,6 +42,26 @@ def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"avos {__version__}")
         raise typer.Exit()
+
+
+def _first_env(*keys: str) -> str:
+    """Return the first non-empty env value for any of the given keys."""
+    for k in keys:
+        v = os.environ.get(k, "")
+        if v and isinstance(v, str):
+            return v.strip()
+    return ""
+
+
+def _make_reply_service() -> object | None:
+    """Build ReplyOutputService from env if REPLY_MODEL, REPLY_MODEL_URL, REPLY_MODEL_API_KEY are set."""
+    model = _first_env("REPLY_MODEL", "reply_model")
+    url = _first_env("REPLY_MODEL_URL", "reply_model_URL", "reply_model_url")
+    api_key = _first_env("REPLY_MODEL_API_KEY", "reply_model_API_KEY", "reply_model_api_key")
+    if model and url and api_key:
+        from avos_cli.services.reply_output_service import ReplyOutputService
+        return ReplyOutputService(api_key=api_key, api_url=url, model=model)
+    return None
 
 
 @app.callback()
@@ -210,12 +240,72 @@ def ask(
             print_error("[AUTH_ERROR] ANTHROPIC_API_KEY environment variable is required for LLM synthesis.")
             raise typer.Exit(1)
 
+    reply_service = _make_reply_service()
     orchestrator = AskOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         llm_client=LLMClient(api_key=llm_api_key, provider=provider),
         repo_root=repo_root,
+        reply_service=reply_service,
     )
     code = orchestrator.run("_/_", question)
+    raise typer.Exit(code)
+
+
+@app.command(name="session-ask")
+def session_ask(
+    question: str = typer.Argument(
+        ..., help="Natural language question about session/live context."
+    ),
+) -> None:
+    """Ask a question about current session and team work (Memory B)."""
+    from avos_cli.commands.session_ask import SessionAskOrchestrator
+    from avos_cli.config.manager import find_repo_root, load_config
+    from avos_cli.exceptions import (
+        ConfigurationNotInitializedError,
+        RepositoryContextError,
+    )
+    from avos_cli.services.llm_client import LLMClient
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+
+    if not api_key:
+        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    try:
+        config = load_config(repo_root)
+    except ConfigurationNotInitializedError:
+        print_error("[AUTH_ERROR] Repository not connected. Run 'avos connect org/repo' first.")
+        raise typer.Exit(1)
+
+    provider = config.llm.provider.lower()
+    if provider == "openai":
+        llm_api_key = os.environ.get("OPENAI_API_KEY", "")
+        if not llm_api_key:
+            print_error("[AUTH_ERROR] OPENAI_API_KEY environment variable is required for OpenAI.")
+            raise typer.Exit(1)
+    else:
+        llm_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not llm_api_key:
+            print_error("[AUTH_ERROR] ANTHROPIC_API_KEY environment variable is required for LLM synthesis.")
+            raise typer.Exit(1)
+
+    reply_service = _make_reply_service()
+    orchestrator = SessionAskOrchestrator(
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        llm_client=LLMClient(api_key=llm_api_key, provider=provider),
+        repo_root=repo_root,
+        reply_service=reply_service,
+    )
+    code = orchestrator.run(config.repo, question)
     raise typer.Exit(code)
 
 
@@ -264,10 +354,12 @@ def history(
             print_error("[AUTH_ERROR] ANTHROPIC_API_KEY environment variable is required for LLM synthesis.")
             raise typer.Exit(1)
 
+    reply_service = _make_reply_service()
     orchestrator = HistoryOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         llm_client=LLMClient(api_key=llm_api_key, provider=provider),
         repo_root=repo_root,
+        reply_service=reply_service,
     )
     code = orchestrator.run("_/_", subject)
     raise typer.Exit(code)
@@ -276,6 +368,9 @@ def history(
 @app.command(name="session-start")
 def session_start(
     goal: str = typer.Argument(..., help="Session goal description."),
+    agent: str | None = typer.Option(
+        None, "--agent", help="Custom agent/developer name (e.g. 'agentA')."
+    ),
 ) -> None:
     """Start a coding session with a goal and background activity capture."""
     from avos_cli.commands.session_start import SessionStartOrchestrator
@@ -302,7 +397,7 @@ def session_start(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         repo_root=repo_root,
     )
-    code = orchestrator.run(goal)
+    code = orchestrator.run(goal, agent=agent)
     raise typer.Exit(code)
 
 
@@ -312,6 +407,7 @@ def session_end() -> None:
     from avos_cli.commands.session_end import SessionEndOrchestrator
     from avos_cli.config.manager import find_repo_root
     from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.git_client import GitClient
     from avos_cli.services.memory_client import AvosMemoryClient
 
     api_key = os.environ.get("AVOS_API_KEY", "")
@@ -330,6 +426,7 @@ def session_end() -> None:
     orchestrator = SessionEndOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         llm_client=None,
+        git_client=GitClient(),
         repo_root=repo_root,
     )
     code = orchestrator.run()
@@ -436,6 +533,66 @@ def conflicts(
         repo_root=repo_root,
     )
     code = orchestrator.run(strict=strict, live=live, json_output=json_output)
+    raise typer.Exit(code)
+
+
+@app.command(name="worktree-init")
+def worktree_init() -> None:
+    """Initialize avos in an existing git worktree by copying config from a sibling."""
+    from avos_cli.commands.worktree_init import WorktreeInitOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.git_client import GitClient
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = WorktreeInitOrchestrator(
+        git_client=GitClient(),
+        repo_root=repo_root,
+    )
+    code = orchestrator.run()
+    raise typer.Exit(code)
+
+
+@app.command(name="worktree-add")
+def worktree_add(
+    path: str = typer.Argument(..., help="Filesystem path for the new worktree."),
+    branch: str = typer.Argument(..., help="Branch name to create in the new worktree."),
+    goal: str = typer.Argument(..., help="Session goal description for the new worktree."),
+    agent: str | None = typer.Option(
+        None, "--agent", help="Custom agent/developer name (e.g. 'agentA')."
+    ),
+) -> None:
+    """Create a git worktree with automatic config copy and session start."""
+    from avos_cli.commands.worktree_add import WorktreeAddOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.git_client import GitClient
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+
+    if not api_key:
+        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = WorktreeAddOrchestrator(
+        git_client=GitClient(),
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        repo_root=repo_root,
+    )
+    code = orchestrator.run(path=path, branch=branch, goal=goal, agent=agent)
     raise typer.Exit(code)
 
 

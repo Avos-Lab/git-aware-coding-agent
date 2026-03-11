@@ -178,6 +178,62 @@ class GitClient:
             return None
         return _parse_remote_url(output)
 
+    def worktree_add(self, repo_path: Path, path: Path, branch: str) -> Path:
+        """Create a new git worktree with a new branch.
+
+        Runs `git worktree add -b <branch> <path>`. The branch is created
+        from the current HEAD of repo_path.
+
+        Args:
+            repo_path: Path to the source git repository.
+            path: Filesystem path for the new worktree.
+            branch: Name of the new branch to create.
+
+        Returns:
+            Resolved Path to the created worktree directory.
+
+        Raises:
+            ServiceParseError: If git worktree add fails (path exists,
+                branch already checked out, etc.).
+            RepositoryContextError: If repo_path is not a git repo.
+        """
+        resolved = path.resolve()
+        result = subprocess.run(
+            ["git", "worktree", "add", "-b", branch, str(resolved)],
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+            timeout=_TIMEOUT,
+        )
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "not a git repository" in stderr.lower():
+                raise RepositoryContextError(f"Not a Git repository: {repo_path}")
+            raise ServiceParseError(
+                f"git worktree add failed: {stderr or 'unknown error'}"
+            )
+        return resolved
+
+    def worktree_list(self, repo_path: Path) -> list[Path]:
+        """List all worktree paths for the repository.
+
+        Parses `git worktree list --porcelain` output where each worktree
+        block starts with a `worktree <path>` line.
+
+        Args:
+            repo_path: Path to any worktree or the main repo.
+
+        Returns:
+            List of resolved Paths for all worktrees (including main).
+        """
+        output = self._run_git(["worktree", "list", "--porcelain"], repo_path)
+        paths: list[Path] = []
+        for line in output.splitlines():
+            if line.startswith("worktree "):
+                wt_path = line[len("worktree "):]
+                paths.append(Path(wt_path).resolve())
+        return paths
+
     def is_worktree(self, repo_path: Path) -> bool:
         """Check if the repo path is a git worktree (not the main repo).
 

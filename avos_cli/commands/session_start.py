@@ -59,11 +59,14 @@ class SessionStartOrchestrator:
         self._repo_root = repo_root
         self._avos_dir = repo_root / ".avos"
 
-    def run(self, goal: str) -> int:
+    def run(self, goal: str, agent: str | None = None) -> int:
         """Execute the session start flow.
 
         Args:
             goal: Developer-provided session goal description.
+            agent: Optional custom agent/developer name. When provided,
+                overrides git user.name for this session's identity in
+                team views and WIP artifacts.
 
         Returns:
             Exit code: 0 success, 1 precondition, 2 external failure.
@@ -77,7 +80,7 @@ class SessionStartOrchestrator:
             print_error(f"[{e.code}] {e}")
             return 1
 
-        memory_id = config.memory_id
+        memory_id = config.memory_id_session
 
         guard_result = self._check_active_session()
         if guard_result == "blocked":
@@ -90,6 +93,7 @@ class SessionStartOrchestrator:
             print_warning("Cleaned stale session state. Starting fresh.")
 
         sanitized_goal = self._sanitize_goal(goal)
+        effective_agent = (agent or "").strip() or None
         session_id = f"sess_{secrets.token_hex(8)}"
 
         try:
@@ -98,13 +102,15 @@ class SessionStartOrchestrator:
             print_error(f"[{e.code}] {e}")
             return 1
 
-        session_state = {
+        session_state: dict[str, object] = {
             "session_id": session_id,
             "goal": sanitized_goal,
             "start_time": datetime.now(tz=timezone.utc).isoformat(),
             "branch": branch,
             "memory_id": memory_id,
         }
+        if effective_agent:
+            session_state["developer"] = effective_agent
 
         self._avos_dir.mkdir(parents=True, exist_ok=True)
         atomic_write(
@@ -130,13 +136,17 @@ class SessionStartOrchestrator:
             json.dumps(pid_state, indent=2),
         )
 
+        panel_pairs: list[tuple[str, str]] = [
+            ("Goal", sanitized_goal),
+            ("Branch", branch),
+        ]
+        if effective_agent:
+            panel_pairs.append(("Agent", effective_agent))
+        panel_pairs.append(("Next", "avos session-end"))
+
         render_kv_panel(
             f"Session Started: {session_id}",
-            [
-                ("Goal", sanitized_goal),
-                ("Branch", branch),
-                ("Next", "avos session-end"),
-            ],
+            panel_pairs,
             style="success",
         )
         return 0
