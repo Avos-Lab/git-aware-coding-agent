@@ -3,7 +3,7 @@
 
 ---
 id: avos-check-history-before-edit
-trigger: "when modifying existing code in a repository with avos"
+trigger: "when modifying existing production code, shared modules, or making medium/large edits in a repository with avos"
 confidence: 0.9
 domain: workflow
 source: repo-curation
@@ -12,7 +12,14 @@ source_repo: avos-dev-cli
 # Check History Before Editing
 
 ## Action
-Before modifying existing code, run `avos history --json "subject"` and `avos ask --json "why was this implemented?"` to understand the context and rationale behind the code.
+Before medium/high-risk edits, run `avos history --json "subject"` and `avos ask --json "why was this implemented?"` to understand context and rationale.
+
+Do this when:
+- editing existing production behavior
+- touching unfamiliar or shared modules
+- making broad or multi-file changes
+
+Skip for low-risk docs/comment/test-only edits.
 
 ## Evidence
 - Understanding history prevents breaking changes
@@ -57,7 +64,7 @@ After pushing a PR to the remote repository, run `avos ingest-pr --json org/repo
 
 ---
 id: avos-search-before-implementing
-trigger: "when implementing new functionality in a repository with avos"
+trigger: "when implementing substantial new functionality in a repository with avos"
 confidence: 0.85
 domain: workflow
 source: repo-curation
@@ -66,7 +73,7 @@ source_repo: avos-dev-cli
 # Search Before Implementing
 
 ## Action
-Before implementing new functionality, run `avos ask --json "is there existing implementation for X?"` to check if similar code already exists.
+Before substantial implementation work, run `avos ask --json "is there existing implementation for X?"` to check for prior patterns and avoid duplication.
 
 ## Evidence
 - Prevents code duplication

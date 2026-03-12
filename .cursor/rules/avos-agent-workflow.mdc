@@ -46,9 +46,22 @@ This stores a session artifact in memory for future reference.
 
 ## Before Modifying Code
 
-### Always Check History First
+### Trigger `avos ask` / `avos history` only for high-risk edits
 
-Before modifying existing code, especially unfamiliar code:
+Run `avos ask` and `avos history` when **any** of these are true:
+
+- You will modify existing production code (not only docs/tests/comments)
+- The module is unfamiliar or shared across teams
+- The change is medium/large (for example: multiple files, refactor, behavior change)
+- The change impacts architecture, APIs, auth, data flow, or critical paths
+
+You may skip `ask/history` for low-risk edits:
+
+- New isolated files with no existing code edits
+- Small typo/comment/docs-only updates
+- Pure test-only updates that do not change production behavior
+
+When the trigger conditions are met:
 
 ```bash
 # Get chronological history of a subject
@@ -62,6 +75,7 @@ This helps you understand:
 - Why the code was written this way
 - Who made previous changes and why
 - Related PRs, issues, and commits
+- Which constraints are still active before making broad edits
 
 ### Search Before Writing
 
@@ -140,7 +154,7 @@ For JSON output formatting:
 ## Workflow Summary
 
 1. **Start**: `avos session-status --json` → `avos session-start --json "goal"`
-2. **Research**: `avos history --json "subject"` and `avos ask --json "question"`
+2. **Research (only when triggered)**: `avos history --json "subject"` and `avos ask --json "question"`
 3. **Code**: Make your changes
 4. **End**: `avos session-end --json`
 5. **After PR**: `avos ingest-pr --json org/repo PR_NUMBER`

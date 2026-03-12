@@ -10,10 +10,18 @@ Use this skill when you need chronological history of a subject in the repositor
 
 ## When to Use
 
-- Understanding how a feature evolved over time
-- Reviewing the history of changes to a module
-- Finding who made changes and why
-- Before refactoring existing code
+Use this skill when at least one trigger applies:
+
+- You are changing existing production behavior
+- You are refactoring or touching shared/unfamiliar modules
+- The change is medium/large (multi-file, broad behavior impact)
+- You need to understand prior constraints before redesigning logic
+
+You can skip for low-risk tasks:
+
+- Docs/comments/typo-only edits
+- New isolated files with no modification to existing behavior
+- Test-only updates not affecting runtime behavior
 
 ## Command
 
@@ -103,7 +111,7 @@ avos history --json "database connection handling"
 ## Workflow
 
 1. Identify the code you want to modify
-2. Run `avos history --json "relevant subject"`
+2. If trigger conditions match, run `avos history --json "relevant subject"`
 3. Review the timeline and summary
 4. Understand why decisions were made
 5. Make informed changes

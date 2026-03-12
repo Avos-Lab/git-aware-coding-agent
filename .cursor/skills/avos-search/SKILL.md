@@ -10,10 +10,18 @@ Use this skill when you need to search repository memory for engineering context
 
 ## When to Use
 
-- Before modifying unfamiliar code
-- Understanding why code was written a certain way
-- Finding existing patterns or implementations
-- Answering questions about the codebase
+Use this skill when at least one trigger applies:
+
+- You are editing existing production code in an unfamiliar/shared module
+- You expect a medium/large change (multi-file, refactor, behavior change)
+- You need design rationale before changing architecture/API/auth/data flow
+- You need to avoid duplicating an existing pattern
+
+You can skip this skill for low-risk tasks:
+
+- Docs/comments/typo-only changes
+- New isolated file creation without touching existing behavior
+- Test-only updates that do not alter production logic
 
 ## Command
 
@@ -93,7 +101,8 @@ avos ask --json "is there existing error handling middleware?"
 
 1. **Be specific**: "how does user authentication work?" is better than "auth?"
 2. **Include context**: "why does the login API return 401 instead of 403?" is better than "login error"
-3. **Check before implementing**: Always search before writing new code to avoid duplication
+3. **Use for high-risk edits**: Trigger this before substantial or unfamiliar code edits
+4. **Skip for trivial edits**: Avoid unnecessary memory calls for low-risk cosmetic changes
 
 ## Error Handling
 

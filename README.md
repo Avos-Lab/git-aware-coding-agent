@@ -387,14 +387,21 @@ Coverage target: 90%+ (enforced in CI).
 
 | Variable              | Required for                     | Description                                   |
 | --------------------- | -------------------------------- | --------------------------------------------- |
-| `AVOS_API_KEY`        | All commands                     | Avos Memory API key                           |
-| `AVOS_API_URL`        | All commands                     | API endpoint (default: `https://api.avos.ai`) |
+| `AVOS_API_KEY`        | All commands                     | Avos Memory API key from `https://avoslab.com/` |
+| `AVOS_API_URL`        | All commands                     | API endpoint (default: `https://avosmemory.avoslab.com`) |
 | `GITHUB_TOKEN`        | `connect`, `ingest`, `ingest-pr` | GitHub personal access token                  |
 | `ANTHROPIC_API_KEY`   | `ask`, `history`, `session-ask`  | Anthropic API key for LLM synthesis           |
 | `OPENAI_API_KEY`      | `ask`, `history`, `session-ask`  | Alternative: OpenAI API key                   |
 | `REPLY_MODEL`         | `--json` for `ask`/`history`     | Model identifier for output formatting        |
 | `REPLY_MODEL_URL`     | `--json` for `ask`/`history`     | API endpoint for reply model                  |
 | `REPLY_MODEL_API_KEY` | `--json` for `ask`/`history`     | API key for reply model                       |
+
+To configure Avos credentials:
+
+1. Log in to `https://avoslab.com/`.
+2. Generate your `AVOS_API_KEY` from the AvosLab dashboard.
+3. Set `AVOS_API_URL` to `https://avosmemory.avoslab.com` (or use your tenant-specific endpoint if provided).
+4. For directory and setup details, see `https://avoslab.com/docs`.
 
 ---
 

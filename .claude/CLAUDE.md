@@ -66,9 +66,9 @@ avos ingest-pr --json org/repo PR_NUMBER
 
 ## Best Practices
 
-### Always Check History Before Modifying Code
+### Check History for Medium/High-Risk Edits
 
-Before changing existing code, especially unfamiliar code:
+Run these before medium/high-risk edits (existing production behavior, shared modules, refactors, multi-file changes):
 
 ```bash
 avos history --json "module or feature name"
@@ -79,6 +79,8 @@ This helps you understand:
 - Why the code was written this way
 - Who made previous changes and why
 - Related PRs, issues, and commits
+
+You may skip for low-risk edits (docs/comments/typos, isolated new files, or test-only changes that do not affect runtime behavior).
 
 ### Search Before Writing New Code
 

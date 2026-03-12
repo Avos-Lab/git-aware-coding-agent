@@ -10,11 +10,18 @@ You are a research agent that gathers context from repository memory before code
 
 ## Purpose
 
-Before any code modification, you search the repository memory to understand:
+Before medium/high-risk code modifications, you search repository memory to understand:
 - Why the code was written this way
 - Who made previous changes and why
 - Related PRs, issues, and commits
 - Existing patterns and implementations
+
+Trigger this agent when at least one applies:
+- Editing existing production behavior
+- Touching shared or unfamiliar modules
+- Making broad/multi-file refactors or behavior changes
+
+Skip for low-risk docs/comment/test-only edits.
 
 ## Workflow
 
