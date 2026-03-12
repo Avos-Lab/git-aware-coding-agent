@@ -92,7 +92,10 @@ def main(
 ) -> None:
     """AVOS CLI - Developer memory for repositories."""
     if ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
+        help_text = ctx.get_help()
+        if "--version" not in help_text:
+            help_text = f"{help_text.rstrip()}\n\n--version  -v  Show version and exit.\n"
+        typer.echo(help_text)
         raise typer.Exit(0)
 
     ctx.ensure_object(dict)
