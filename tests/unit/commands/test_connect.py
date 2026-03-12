@@ -85,6 +85,7 @@ class TestHappyPath:
         orchestrator.run("myorg/myrepo")
         data = json.loads((git_repo / ".avos" / "config.json").read_text())
         assert data["memory_id"] == "repo:myorg/myrepo"
+        assert data["memory_id_session"] == "repo:myorg/myrepo-session"
 
     def test_config_has_repo_slug(
         self, orchestrator: ConnectOrchestrator, git_repo: Path
@@ -105,21 +106,23 @@ class TestHappyPath:
     ):
         orchestrator.run("myorg/myrepo")
         data = json.loads((git_repo / ".avos" / "config.json").read_text())
-        assert data["schema_version"] == "1"
+        assert data["schema_version"] == "2"
 
     def test_bootstrap_note_sent(
         self, orchestrator: ConnectOrchestrator, mock_memory_client: MagicMock
     ):
         orchestrator.run("myorg/myrepo")
-        mock_memory_client.add_memory.assert_called_once()
-        call_kwargs = mock_memory_client.add_memory.call_args
-        assert "repo:myorg/myrepo" in str(call_kwargs)
+        assert mock_memory_client.add_memory.call_count == 2  # Memory A and Memory B
+        calls = mock_memory_client.add_memory.call_args_list
+        memory_ids = [c.kwargs.get("memory_id", c.args[0] if c.args else "") for c in calls]
+        assert "repo:myorg/myrepo" in memory_ids
+        assert "repo:myorg/myrepo-session" in memory_ids
 
     def test_search_called_for_bootstrap_check(
         self, orchestrator: ConnectOrchestrator, mock_memory_client: MagicMock
     ):
         orchestrator.run("myorg/myrepo")
-        mock_memory_client.search.assert_called_once()
+        assert mock_memory_client.search.call_count == 2  # Memory A and Memory B
 
     def test_github_validation_called(
         self, orchestrator: ConnectOrchestrator, mock_github_client: MagicMock

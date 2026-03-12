@@ -1,6 +1,9 @@
 # avos connect
 
-Connect a repository to Avos Memory.
+Connect a repository to Avos Memory. Creates two memory spaces:
+
+- **Memory A (past)**: PR history, commits, issues, docs. Used by `avos ask`, `avos history`, and `avos ingest`.
+- **Memory B (session)**: Session artifacts. Used by `avos session-start`, `avos session-end`, and `avos session-ask`.
 
 ## Usage
 
@@ -10,8 +13,8 @@ avos connect <repo>
 
 ## Options
 
-| Option | Description |
-|--------|-------------|
+| Option | Description                                     |
+| ------ | ----------------------------------------------- |
 | `repo` | Repository slug in `org/repo` format (required) |
 
 ## Examples

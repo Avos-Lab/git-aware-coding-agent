@@ -151,7 +151,6 @@ class TestWorktreeInitOrchestrator:
         source_avos = connected_repo / ".avos"
         (source_avos / "session.json").write_text('{"session_id": "old"}')
         (source_avos / "watcher.pid").write_text('{"pid": 99999}')
-        (source_avos / "watch.pid").write_text('{"pid": 88888}')
 
         orch = WorktreeInitOrchestrator(
             git_client=GitClient(),
@@ -164,7 +163,6 @@ class TestWorktreeInitOrchestrator:
         assert (new_avos / "config.json").exists()
         assert not (new_avos / "session.json").exists()
         assert not (new_avos / "watcher.pid").exists()
-        assert not (new_avos / "watch.pid").exists()
 
     def test_fails_when_no_sibling_has_config(self, git_repo: Path):
         """Should return exit 1 when no sibling worktree has .avos/config.json."""
@@ -202,7 +200,70 @@ class TestWorktreeInitOrchestrator:
 
 
 # ---------------------------------------------------------------------------
-# Session-start --agent tests
+# Session-start: worktree requires --agent
+# ---------------------------------------------------------------------------
+
+class TestSessionStartAgentRequiredInWorktree:
+    """In a git worktree, session-start must be called with --agent."""
+
+    def test_blocks_session_start_in_worktree_without_agent(
+        self, connected_repo: Path, worktree_in_connected: Path
+    ):
+        """SessionStartOrchestrator in worktree without agent returns 1 with AGENT_REQUIRED."""
+        import shutil
+
+        from avos_cli.commands.session_start import SessionStartOrchestrator
+
+        # Copy config into worktree so load_config succeeds before agent check
+        wt_avos = worktree_in_connected / ".avos"
+        wt_avos.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            connected_repo / ".avos" / "config.json",
+            wt_avos / "config.json",
+        )
+
+        orch = SessionStartOrchestrator(
+            git_client=GitClient(),
+            memory_client=MagicMock(),
+            repo_root=worktree_in_connected,
+        )
+        with patch("avos_cli.commands.session_start.print_error") as mock_err:
+            code = orch.run("test goal")
+
+        assert code == 1
+        mock_err.assert_called_once()
+        msg = mock_err.call_args[0][0]
+        assert "AGENT_REQUIRED" in msg
+        assert "--agent" in msg or "worktree" in msg
+
+    def test_allows_session_start_in_worktree_with_agent(
+        self, connected_repo: Path, worktree_in_connected: Path
+    ):
+        """SessionStartOrchestrator in worktree with agent proceeds normally."""
+        import shutil
+
+        from avos_cli.commands.session_start import SessionStartOrchestrator
+
+        wt_avos = worktree_in_connected / ".avos"
+        wt_avos.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            connected_repo / ".avos" / "config.json",
+            wt_avos / "config.json",
+        )
+
+        orch = SessionStartOrchestrator(
+            git_client=GitClient(),
+            memory_client=MagicMock(),
+            repo_root=worktree_in_connected,
+        )
+        with patch.object(orch, "_spawn_watcher", return_value=99999):
+            code = orch.run("test goal", agent="agentB")
+
+        assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# Session-start --agent tests (main repo)
 # ---------------------------------------------------------------------------
 
 class TestSessionStartAgent:

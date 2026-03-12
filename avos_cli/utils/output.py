@@ -8,9 +8,6 @@ from __future__ import annotations
 
 import json
 import sys
-import time
-from collections.abc import Callable
-from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -53,7 +50,8 @@ def is_interactive() -> bool:
 def print_success(message: str) -> None:
     """Print a success message in green."""
     if is_interactive():
-        console.print(f"[success]\u2713[/success] {message}")
+        console.print("[success]\u2713[/success] ", end="")
+        console.print(message, markup=False)
     else:
         print(f"OK: {message}")
 
@@ -61,7 +59,8 @@ def print_success(message: str) -> None:
 def print_error(message: str) -> None:
     """Print an error message in red."""
     if is_interactive():
-        console.print(f"[error]\u2717[/error] {message}")
+        console.print("[error]\u2717[/error] ", end="")
+        console.print(message, markup=False)
     else:
         print(f"ERROR: {message}", file=sys.stderr)
 
@@ -69,7 +68,8 @@ def print_error(message: str) -> None:
 def print_warning(message: str) -> None:
     """Print a warning message in yellow."""
     if is_interactive():
-        console.print(f"[warning]\u26a0[/warning] {message}")
+        console.print("[warning]\u26a0[/warning] ", end="")
+        console.print(message, markup=False)
     else:
         print(f"WARN: {message}", file=sys.stderr)
 
@@ -77,7 +77,8 @@ def print_warning(message: str) -> None:
 def print_info(message: str) -> None:
     """Print an informational message."""
     if is_interactive():
-        console.print(f"[info]\u2139[/info] {message}")
+        console.print("[info]\u2139[/info] ", end="")
+        console.print(message, markup=False)
     else:
         print(message)
 
@@ -225,27 +226,3 @@ def render_kv_panel(title: str, pairs: list[tuple[str, str]], style: str = "info
             print(f"  {k}: {v}")
 
 
-def render_live_loop(
-    build_fn: Callable[[], Any],
-    interval: float = 30.0,
-) -> None:
-    """Run a Rich Live display that refreshes on a timer.
-
-    Blocks until KeyboardInterrupt (Ctrl+C). Non-TTY raises RuntimeError.
-
-    Args:
-        build_fn: Callable returning a Rich renderable (Table, Panel, etc.).
-        interval: Seconds between refreshes.
-    """
-    if not is_interactive():
-        raise RuntimeError("Live mode requires an interactive terminal.")
-
-    from rich.live import Live
-
-    with Live(build_fn(), console=console, refresh_per_second=1) as live:
-        try:
-            while True:
-                time.sleep(interval)
-                live.update(build_fn())
-        except KeyboardInterrupt:
-            pass

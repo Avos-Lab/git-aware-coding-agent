@@ -112,11 +112,6 @@ class WorktreeAddOrchestrator:
             ],
             style="success",
         )
-        print_info("Collaboration commands (run from the new worktree):")
-        print_info("  avos team      - See active team members")
-        print_info("  avos conflicts - Detect potential merge conflicts")
-        print_info("  avos watch     - Publish WIP activity (every 5 min)")
-
         return 0
 
     def _start_session(

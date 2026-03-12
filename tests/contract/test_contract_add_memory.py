@@ -14,11 +14,12 @@ import pytest
 import respx
 
 from avos_cli.exceptions import AuthError, RequestContractError, UpstreamUnavailableError
-from avos_cli.services.memory_client import AvosMemoryClient
+from avos_cli.services.memory_client import AvosMemoryClient, _normalize_memory_id_for_api
 
 BASE_URL = "https://api.contract.test"
 API_KEY = "sk_contract_test_key"
 MEMORY_ID = "repo:org/repo"
+MEMORY_ID_API = _normalize_memory_id_for_api(MEMORY_ID)
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "contracts"
 
 
@@ -39,7 +40,7 @@ class TestAddMemoryContractSuccess:
     @respx.mock
     def test_post_json_shape_and_201_success(self, client: AvosMemoryClient) -> None:
         fixture = _load_fixture("add_memory_success.json")
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes").mock(
             return_value=httpx.Response(201, json=fixture)
         )
         result = client.add_memory(MEMORY_ID, content="test content")
@@ -49,7 +50,7 @@ class TestAddMemoryContractSuccess:
 
     @respx.mock
     def test_request_has_content_in_body(self, client: AvosMemoryClient) -> None:
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes").mock(
             return_value=httpx.Response(201, json=_load_fixture("add_memory_success.json"))
         )
         client.add_memory(MEMORY_ID, content="payload content")
@@ -64,7 +65,7 @@ class TestAddMemoryContractErrors:
 
     @respx.mock
     def test_401_raises_auth_error(self, client: AvosMemoryClient) -> None:
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes").mock(
             return_value=httpx.Response(401, json=_load_fixture("error_401.json"))
         )
         with pytest.raises(AuthError):
@@ -72,7 +73,7 @@ class TestAddMemoryContractErrors:
 
     @respx.mock
     def test_403_raises_auth_error(self, client: AvosMemoryClient) -> None:
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes").mock(
             return_value=httpx.Response(403, json=_load_fixture("error_403.json"))
         )
         with pytest.raises(AuthError):
@@ -80,7 +81,7 @@ class TestAddMemoryContractErrors:
 
     @respx.mock
     def test_422_raises_upstream_error(self, client: AvosMemoryClient) -> None:
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes").mock(
             return_value=httpx.Response(422, json=_load_fixture("error_422.json"))
         )
         with pytest.raises(UpstreamUnavailableError):
@@ -89,7 +90,7 @@ class TestAddMemoryContractErrors:
     @respx.mock
     def test_429_retries_then_succeeds(self, client: AvosMemoryClient) -> None:
         fixture = _load_fixture("add_memory_success.json")
-        route = respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes")
+        route = respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes")
         route.side_effect = [
             httpx.Response(429, json=_load_fixture("error_429.json")),
             httpx.Response(201, json=fixture),
@@ -99,7 +100,7 @@ class TestAddMemoryContractErrors:
 
     @respx.mock
     def test_503_raises_after_retries(self, client: AvosMemoryClient) -> None:
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes").mock(
             return_value=httpx.Response(503, json=_load_fixture("error_503.json"))
         )
         with pytest.raises(UpstreamUnavailableError):

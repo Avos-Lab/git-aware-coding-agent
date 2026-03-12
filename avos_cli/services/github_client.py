@@ -55,7 +55,7 @@ class GitHubClient:
         self._token = token
         self._client = httpx.Client(
             headers={
-                "Authorization": f"token {token}",
+                "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github.v3+json",
             },
             timeout=_TIMEOUT,

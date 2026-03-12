@@ -35,10 +35,6 @@ class ErrorCode(str, Enum):
     WATCHER_SPAWN_FAILED = "WATCHER_SPAWN_FAILED"
     WATCHER_STOP_FAILED = "WATCHER_STOP_FAILED"
     CHECKPOINT_PARSE_ERROR = "CHECKPOINT_PARSE_ERROR"
-    WATCH_ACTIVE_CONFLICT = "WATCH_ACTIVE_CONFLICT"
-    WATCH_NOT_FOUND = "WATCH_NOT_FOUND"
-    SUBSYSTEM_MAP_INVALID = "SUBSYSTEM_MAP_INVALID"
-    SYMBOL_EXTRACTION_FAILED = "SYMBOL_EXTRACTION_FAILED"
 
 
 class AvosError(Exception):
@@ -347,63 +343,3 @@ class CheckpointParseError(AvosError):
         )
 
 
-class WatchActiveError(AvosError):
-    """Raised when a watch process is already running and blocks a new start.
-
-    Args:
-        message: Description of the conflict.
-    """
-
-    def __init__(self, message: str | None = None) -> None:
-        super().__init__(
-            message=message or "A watch process is already active.",
-            code=ErrorCode.WATCH_ACTIVE_CONFLICT,
-            hint="Run 'avos watch --stop' to stop the current watch first.",
-        )
-
-
-class WatchNotFoundError(AvosError):
-    """Raised when no active watch process exists for a stop operation.
-
-    Args:
-        message: Description of the missing watch.
-    """
-
-    def __init__(self, message: str | None = None) -> None:
-        super().__init__(
-            message=message or "No active watch process found.",
-            code=ErrorCode.WATCH_NOT_FOUND,
-            hint="Run 'avos watch' to start watching.",
-        )
-
-
-class SubsystemMapError(AvosError):
-    """Raised when the subsystem mapping file is malformed or invalid.
-
-    Args:
-        message: Description of the mapping error.
-    """
-
-    def __init__(self, message: str) -> None:
-        super().__init__(
-            message=message,
-            code=ErrorCode.SUBSYSTEM_MAP_INVALID,
-            hint="Check .avos/subsystems.yml format: top-level dict of subsystem_name -> [glob_patterns].",
-        )
-
-
-class SymbolExtractionError(AvosError):
-    """Raised when symbol extraction fails for a file (warning-level, not hard error).
-
-    Args:
-        message: Description of the extraction failure.
-        file_path: Path of the file that failed extraction.
-    """
-
-    def __init__(self, message: str, file_path: str | None = None) -> None:
-        self.file_path = file_path
-        super().__init__(
-            message=message,
-            code=ErrorCode.SYMBOL_EXTRACTION_FAILED,
-            hint="Symbol extraction failed; conflict detection continues with file-level overlap only.",
-        )

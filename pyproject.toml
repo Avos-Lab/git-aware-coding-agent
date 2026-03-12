@@ -135,7 +135,6 @@ omit = [
     "avos_cli/utils/output.py",
     "avos_cli/services/llm_client.py",
     "avos_cli/services/watcher.py",
-    "avos_cli/services/watch_watcher.py",
     "avos_cli/parsers/*",
     "avos_cli/cli/main.py",
 ]

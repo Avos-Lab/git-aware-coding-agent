@@ -60,12 +60,12 @@ class TestPackageImport:
         assert hasattr(main, "app")
 
     def test_cli_module_loads_dotenv_on_import(self):
-        """CLI module should load .env variables when imported."""
+        """CLI module should load .env variables when imported (cwd, pkg root, ~/.avos)."""
         import avos_cli.cli.main as cli_main
 
         with patch("dotenv.load_dotenv") as load_dotenv_mock:
             importlib.reload(cli_main)
-            load_dotenv_mock.assert_called_once()
+            assert load_dotenv_mock.call_count >= 1
 
         # Restore original module state after patched reload.
         importlib.reload(cli_main)
@@ -74,6 +74,44 @@ class TestPackageImport:
         from avos_cli import exceptions
 
         assert hasattr(exceptions, "AvosError")
+
+    def test_first_env_returns_first_non_empty(self):
+        """_first_env returns the first non-empty value for any of the given keys."""
+        from avos_cli.cli.main import _first_env
+
+        with patch.dict("os.environ", {"_TEST_A": "a", "_TEST_B": "", "_TEST_C": "c"}):
+            assert _first_env("_TEST_X", "_TEST_A", "_TEST_B", "_TEST_C") == "a"
+            assert _first_env("_TEST_X", "_TEST_Y") == ""
+            assert _first_env("_TEST_B", "_TEST_A") == "a"
+            assert _first_env("_TEST_NONEXISTENT_1", "_TEST_NONEXISTENT_2") == ""
+
+    def test_make_reply_service_accepts_mixed_case_env_vars(self):
+        """_make_reply_service picks up reply_model, reply_model_URL, reply_model_API_KEY."""
+        from avos_cli.cli.main import _make_reply_service
+
+        env = {
+            "reply_model": "Qwen/Qwen3-Coder-30B",
+            "reply_model_URL": "https://api.example.com/v1/chat",
+            "reply_model_API_KEY": "sk-test-key-123",
+        }
+        with patch.dict("os.environ", env, clear=False):
+            svc = _make_reply_service()
+        assert svc is not None
+        assert hasattr(svc, "format_history")
+        assert hasattr(svc, "format_ask")
+
+    def test_make_reply_service_returns_none_when_vars_missing(self):
+        """_make_reply_service returns None when any required var is missing."""
+        from avos_cli.cli.main import _make_reply_service
+
+        with patch.dict("os.environ", {}, clear=True):
+            assert _make_reply_service() is None
+        with patch.dict(
+            "os.environ",
+            {"REPLY_MODEL": "m", "REPLY_MODEL_URL": "u"},
+            clear=True,
+        ):
+            assert _make_reply_service() is None
 
 
 class TestCLIEntryPoint:
@@ -149,10 +187,6 @@ class TestExceptionHierarchy:
             "WATCHER_SPAWN_FAILED",
             "WATCHER_STOP_FAILED",
             "CHECKPOINT_PARSE_ERROR",
-            "WATCH_ACTIVE_CONFLICT",
-            "WATCH_NOT_FOUND",
-            "SUBSYSTEM_MAP_INVALID",
-            "SYMBOL_EXTRACTION_FAILED",
         }
         actual_codes = {e.value for e in ErrorCode}
         assert actual_codes == expected_codes

@@ -58,9 +58,10 @@ def git_repo(tmp_path: Path) -> Path:
     config = {
         "repo": "myorg/myrepo",
         "memory_id": "repo:myorg/myrepo",
+        "memory_id_session": "repo:myorg/myrepo-session",
         "api_url": "https://api.avos.ai",
         "api_key": "sk_test",
-        "schema_version": "1",
+        "schema_version": "2",
     }
     (avos / "config.json").write_text(json.dumps(config))
     return repo
@@ -152,6 +153,19 @@ class TestHappyPath:
         add_calls = mock_memory_client.add_memory.call_args_list
         issue_calls = [c for c in add_calls if "[type: issue]" in str(c)]
         assert len(issue_calls) == 2
+
+    def test_ingest_issues_uses_get_issue_details_not_list(
+        self, orchestrator: IngestOrchestrator, mock_github_client: MagicMock
+    ):
+        """Regression: list_issues returns 'comments' as int; get_issue_details has comment bodies."""
+        mock_github_client.list_issues.return_value = [
+            {"number": 100, "comments": 5},
+            {"number": 101, "comments": 3},
+        ]
+        mock_github_client.get_issue_details.side_effect = lambda o, r, n: _make_issue_data(n)
+        code = orchestrator.run("myorg/myrepo", since_days=90)
+        assert code == 0
+        assert mock_github_client.get_issue_details.call_count == 2
 
     def test_ingest_stores_commit_artifacts(
         self, orchestrator: IngestOrchestrator, mock_memory_client: MagicMock

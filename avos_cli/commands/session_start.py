@@ -28,7 +28,7 @@ from avos_cli.exceptions import AvosError, ConfigurationNotInitializedError
 from avos_cli.services.git_client import GitClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success, print_warning, render_kv_panel
+from avos_cli.utils.output import print_error, print_info, print_json, print_success, print_warning, render_kv_panel
 
 _log = get_logger("commands.session_start")
 
@@ -59,7 +59,7 @@ class SessionStartOrchestrator:
         self._repo_root = repo_root
         self._avos_dir = repo_root / ".avos"
 
-    def run(self, goal: str, agent: str | None = None) -> int:
+    def run(self, goal: str, agent: str | None = None, json_output: bool = False) -> int:
         """Execute the session start flow.
 
         Args:
@@ -67,45 +67,59 @@ class SessionStartOrchestrator:
             agent: Optional custom agent/developer name. When provided,
                 overrides git user.name for this session's identity in
                 team views and WIP artifacts.
+            json_output: If True, emit JSON output instead of human UI.
 
         Returns:
             Exit code: 0 success, 1 precondition, 2 external failure.
         """
+        self._json_output = json_output
+
         try:
             config = load_config(self._repo_root)
         except ConfigurationNotInitializedError as e:
-            print_error(f"[CONFIG_NOT_INITIALIZED] {e}")
+            self._emit_error("CONFIG_NOT_INITIALIZED", str(e), hint="Run 'avos connect org/repo' first.")
             return 1
         except AvosError as e:
-            print_error(f"[{e.code}] {e}")
+            self._emit_error(e.code, str(e))
             return 1
 
         memory_id = config.memory_id_session
+        effective_agent = (agent or "").strip() or None
+
+        if self._git.is_worktree(self._repo_root) and not effective_agent:
+            self._emit_error(
+                "AGENT_REQUIRED",
+                "In a git worktree, --agent is required to distinguish this session.",
+                hint="Example: avos session-start --agent agentA \"your goal\"",
+            )
+            return 1
 
         guard_result = self._check_active_session()
         if guard_result == "blocked":
-            print_error(
-                "[SESSION_ACTIVE_CONFLICT] A session is already active. "
-                "Run 'avos session-end' first."
+            self._emit_error(
+                "SESSION_ACTIVE_CONFLICT",
+                "A session is already active.",
+                hint="Run 'avos session-end' first.",
             )
             return 1
         if guard_result == "cleaned":
-            print_warning("Cleaned stale session state. Starting fresh.")
+            if not json_output:
+                print_warning("Cleaned stale session state. Starting fresh.")
 
         sanitized_goal = self._sanitize_goal(goal)
-        effective_agent = (agent or "").strip() or None
         session_id = f"sess_{secrets.token_hex(8)}"
 
         try:
             branch = self._git.current_branch(self._repo_root)
         except AvosError as e:
-            print_error(f"[{e.code}] {e}")
+            self._emit_error(e.code, str(e))
             return 1
 
+        start_time = datetime.now(tz=timezone.utc).isoformat()
         session_state: dict[str, object] = {
             "session_id": session_id,
             "goal": sanitized_goal,
-            "start_time": datetime.now(tz=timezone.utc).isoformat(),
+            "start_time": start_time,
             "branch": branch,
             "memory_id": memory_id,
         }
@@ -122,7 +136,7 @@ class SessionStartOrchestrator:
             watcher_pid = self._spawn_watcher(session_id, branch)
         except Exception as e:
             _log.error("Watcher spawn failed: %s", e)
-            print_error(f"[WATCHER_SPAWN_FAILED] Could not start watcher: {e}")
+            self._emit_error("WATCHER_SPAWN_FAILED", f"Could not start watcher: {e}")
             self._rollback_session_state()
             return 1
 
@@ -136,20 +150,46 @@ class SessionStartOrchestrator:
             json.dumps(pid_state, indent=2),
         )
 
-        panel_pairs: list[tuple[str, str]] = [
-            ("Goal", sanitized_goal),
-            ("Branch", branch),
-        ]
-        if effective_agent:
-            panel_pairs.append(("Agent", effective_agent))
-        panel_pairs.append(("Next", "avos session-end"))
+        if json_output:
+            print_json(
+                success=True,
+                data={
+                    "session_id": session_id,
+                    "goal": sanitized_goal,
+                    "branch": branch,
+                    "agent": effective_agent,
+                    "started_at": start_time,
+                },
+                error=None,
+            )
+        else:
+            panel_pairs: list[tuple[str, str]] = [
+                ("Goal", sanitized_goal),
+                ("Branch", branch),
+            ]
+            if effective_agent:
+                panel_pairs.append(("Agent", effective_agent))
+            panel_pairs.append(("Next", "avos session-end"))
 
-        render_kv_panel(
-            f"Session Started: {session_id}",
-            panel_pairs,
-            style="success",
-        )
+            render_kv_panel(
+                f"Session Started: {session_id}",
+                panel_pairs,
+                style="success",
+            )
         return 0
+
+    def _emit_error(
+        self, code: str, message: str, hint: str | None = None, retryable: bool = False
+    ) -> None:
+        """Emit error in JSON or human format based on mode."""
+        if self._json_output:
+            print_json(
+                success=False,
+                data=None,
+                error={"code": code, "message": message, "hint": hint, "retryable": retryable},
+            )
+        else:
+            print_error(f"[{code}] {message}")
 
     def _check_active_session(self) -> str:
         """Check for existing active session.

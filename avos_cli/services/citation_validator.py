@@ -103,8 +103,10 @@ class CitationValidator:
         self, response_text: str
     ) -> list[tuple[str, str | None]] | None:
         """Try to parse citations from JSON structure in response."""
+        cleaned = re.sub(r"^```(?:json)?\s*\n?", "", response_text.strip())
+        cleaned = re.sub(r"\n?```\s*$", "", cleaned)
         try:
-            data = json.loads(response_text)
+            data = json.loads(cleaned)
         except (json.JSONDecodeError, TypeError):
             return None
 

@@ -247,4 +247,4 @@ class TestTokenHeader:
             )
         )
         client.list_pull_requests(OWNER, REPO)
-        assert route.calls[0].request.headers["authorization"] == f"token {TOKEN}"
+        assert route.calls[0].request.headers["authorization"] == f"Bearer {TOKEN}"

@@ -32,10 +32,20 @@ _log = get_logger("memory_client")
 
 _DEFAULT_TIMEOUT = 30.0
 _UPLOAD_TIMEOUT = 120.0
+_SEARCH_TIMEOUT = 90.0
 _MAX_RETRIES = 3
 
 
 _LOCALHOST_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def _normalize_memory_id_for_api(memory_id: str) -> str:
+    """Convert memory_id to API-safe format for URL path segments.
+
+    Avos Memory API does not support ':' or '/' in memory_id path segments.
+    Transforms repo:org/repo -> repo-org-repo for add, search, and delete.
+    """
+    return memory_id.replace(":", "-").replace("/", "-")
 
 
 def _validate_endpoint(url: str) -> None:
@@ -137,7 +147,8 @@ class AvosMemoryClient:
         event_at: str | None = None,
     ) -> NoteResponse:
         """Send a JSON note (text or media URL mode)."""
-        url = f"{self._api_url}/api/v1/memories/{memory_id}/notes"
+        api_id = _normalize_memory_id_for_api(memory_id)
+        url = f"{self._api_url}/api/v1/memories/{api_id}/notes"
         body: dict[str, object] = {}
         if content is not None:
             body["content"] = content
@@ -158,7 +169,8 @@ class AvosMemoryClient:
         event_at: str | None = None,
     ) -> NoteResponse:
         """Upload files via multipart form."""
-        url = f"{self._api_url}/api/v1/memories/{memory_id}/notes/upload"
+        api_id = _normalize_memory_id_for_api(memory_id)
+        url = f"{self._api_url}/api/v1/memories/{api_id}/notes/upload"
         files_data: list[tuple[str, tuple[str, bytes, str]]] = []
         for fp in file_paths:
             path = Path(fp)
@@ -189,10 +201,13 @@ class AvosMemoryClient:
         Returns:
             SearchResult with ranked results and total_count.
         """
-        url = f"{self._api_url}/api/v1/memories/{memory_id}/search"
+        api_id = _normalize_memory_id_for_api(memory_id)
+        url = f"{self._api_url}/api/v1/memories/{api_id}/search"
         body = {"query": query, "k": k, "mode": mode}
 
-        response = self._request_with_retry("POST", url, json=body)
+        response = self._request_with_retry(
+            "POST", url, json=body, timeout=_SEARCH_TIMEOUT
+        )
         self._check_auth(response)
         self._check_response(response)
         return SearchResult(**response.json())
@@ -207,7 +222,8 @@ class AvosMemoryClient:
         Returns:
             True if deleted (204), False if not found (404).
         """
-        url = f"{self._api_url}/api/v1/memories/{memory_id}/notes/{note_id}"
+        api_id = _normalize_memory_id_for_api(memory_id)
+        url = f"{self._api_url}/api/v1/memories/{api_id}/notes/{note_id}"
         response = self._request_with_retry("DELETE", url)
 
         if response.status_code == 204:

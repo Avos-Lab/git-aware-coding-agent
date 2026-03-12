@@ -49,9 +49,6 @@ avos ask "How does authentication work?"
 | `ask` | Ask questions, get evidence-backed answers |
 | `history` | Chronological history of a subject |
 | `session-start` / `session-end` | Coding session with background capture |
-| `watch` | Publish WIP activity to team memory |
-| `team` | Show active team members and their work |
-| `conflicts` | Detect merge conflicts with team work |
 
 ## License
 

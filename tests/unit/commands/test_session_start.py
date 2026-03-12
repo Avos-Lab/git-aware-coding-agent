@@ -19,15 +19,20 @@ from avos_cli.commands.session_start import SessionStartOrchestrator
 from avos_cli.exceptions import ConfigurationNotInitializedError
 
 
-def _make_config_json(avos_dir: Path, memory_id: str = "repo:org/test") -> None:
+def _make_config_json(
+    avos_dir: Path,
+    memory_id: str = "repo:org/test",
+    memory_id_session: str = "repo:org/test-session",
+) -> None:
     """Write a minimal valid config.json for tests."""
     avos_dir.mkdir(parents=True, exist_ok=True)
     config = {
         "repo": "org/test",
         "memory_id": memory_id,
+        "memory_id_session": memory_id_session,
         "api_url": "https://api.avos.ai",
         "api_key": "test-key",
-        "schema_version": "1",
+        "schema_version": "2",
     }
     (avos_dir / "config.json").write_text(json.dumps(config))
 
@@ -40,7 +45,7 @@ def _make_session_json(avos_dir: Path, session_id: str = "sess_old", pid: int = 
         "goal": "old goal",
         "start_time": "2026-03-07T10:00:00+00:00",
         "branch": "main",
-        "memory_id": "repo:org/test",
+        "memory_id": "repo:org/test-session",
     }
     (avos_dir / "session.json").write_text(json.dumps(session))
     pid_data = {
@@ -62,6 +67,7 @@ class TestHappyPath:
         _make_config_json(avos_dir)
 
         git_client = MagicMock()
+        git_client.is_worktree.return_value = False
         git_client.current_branch.return_value = "feature/test"
         memory_client = MagicMock()
 
@@ -87,7 +93,7 @@ class TestHappyPath:
         assert session_data["goal"] == "Implement feature X"
         assert session_data["branch"] == "feature/test"
         assert session_data["session_id"].startswith("sess_")
-        assert session_data["memory_id"] == "repo:org/test"
+        assert session_data["memory_id"] == "repo:org/test-session"
 
         pid_data = json.loads((avos_dir / "watcher.pid").read_text())
         assert pid_data["pid"] == 12345
@@ -100,6 +106,7 @@ class TestHappyPath:
         _make_config_json(repo_root / ".avos")
 
         git_client = MagicMock()
+        git_client.is_worktree.return_value = False
         git_client.current_branch.return_value = "main"
 
         orchestrator = SessionStartOrchestrator(
@@ -132,8 +139,10 @@ class TestActiveSessionGuard:
         _make_config_json(avos_dir)
         _make_session_json(avos_dir, pid=os.getpid())
 
+        git_client = MagicMock()
+        git_client.is_worktree.return_value = False
         orchestrator = SessionStartOrchestrator(
-            git_client=MagicMock(),
+            git_client=git_client,
             memory_client=MagicMock(),
             repo_root=repo_root,
         )
@@ -154,6 +163,7 @@ class TestStaleSessionCleanup:
         _make_session_json(avos_dir, pid=999999)
 
         git_client = MagicMock()
+        git_client.is_worktree.return_value = False
         git_client.current_branch.return_value = "main"
 
         orchestrator = SessionStartOrchestrator(
@@ -185,6 +195,7 @@ class TestGoalSanitization:
         _make_config_json(repo_root / ".avos")
 
         git_client = MagicMock()
+        git_client.is_worktree.return_value = False
         git_client.current_branch.return_value = "main"
 
         orchestrator = SessionStartOrchestrator(
@@ -213,6 +224,7 @@ class TestGoalSanitization:
         _make_config_json(repo_root / ".avos")
 
         git_client = MagicMock()
+        git_client.is_worktree.return_value = False
         git_client.current_branch.return_value = "main"
 
         orchestrator = SessionStartOrchestrator(
@@ -244,6 +256,7 @@ class TestWatcherSpawnFailure:
         _make_config_json(repo_root / ".avos")
 
         git_client = MagicMock()
+        git_client.is_worktree.return_value = False
         git_client.current_branch.return_value = "main"
 
         orchestrator = SessionStartOrchestrator(
@@ -267,6 +280,7 @@ class TestWatcherSpawnFailure:
         _make_config_json(repo_root / ".avos")
 
         git_client = MagicMock()
+        git_client.is_worktree.return_value = False
         git_client.current_branch.return_value = "main"
 
         orchestrator = SessionStartOrchestrator(

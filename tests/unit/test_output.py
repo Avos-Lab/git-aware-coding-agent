@@ -14,6 +14,7 @@ import pytest
 
 from avos_cli.utils.output import (
     create_progress,
+    print_info,
     print_json,
     print_verbose,
     render_kv_panel,
@@ -74,6 +75,16 @@ class TestPrintVerbose:
         captured = capsys.readouterr()
         out = captured.out + captured.err
         assert "hidden message" not in out
+
+
+class TestPrintInfoMarkupSafety:
+    """Ensure print_info handles bracket-heavy content safely."""
+
+    @patch("avos_cli.utils.output.is_interactive", return_value=True)
+    def test_does_not_raise_on_markup_like_text(self, _mock: object) -> None:
+        # Contains sequences that Rich markup parser would treat as invalid tags.
+        message = "Timeline [type: raw_pr_thread] details [//] [author: x]"
+        print_info(message)
 
 
 class TestCreateProgressSuppress:

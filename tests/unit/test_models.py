@@ -18,9 +18,8 @@ from avos_cli.models.artifacts import (
     IssueArtifact,
     PRArtifact,
     SessionArtifact,
-    WIPArtifact,
 )
-from avos_cli.models.config import LLMConfig, RepoConfig, SessionState, WatchState
+from avos_cli.models.config import LLMConfig, RepoConfig, SessionState
 
 
 class TestRepoConfig:
@@ -28,6 +27,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_test_key"),
         )
@@ -39,6 +39,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_test"),
         )
@@ -49,6 +50,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_test"),
         )
@@ -59,6 +61,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_test"),
             llm=LLMConfig(provider="openai", model="gpt-4"),
@@ -69,6 +72,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_super_secret"),
         )
@@ -79,6 +83,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_super_secret"),
         )
@@ -89,6 +94,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_test"),
         )
@@ -99,6 +105,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_test"),
             connected_at=now,
@@ -109,6 +116,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_test"),
         )
@@ -118,6 +126,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_test"),
             schema_version="2",
@@ -132,6 +141,7 @@ class TestRepoConfig:
         cfg = RepoConfig(
             repo="org/repo",
             memory_id="repo:org/repo",
+            memory_id_session="repo:org/repo-session",
             api_url="https://api.example.com",
             api_key=SecretStr("sk_test"),
             github_token=SecretStr("ghp_secret_token"),
@@ -159,29 +169,6 @@ class TestSessionState:
     def test_missing_required_fields(self):
         with pytest.raises(ValidationError):
             SessionState()  # type: ignore[call-arg]
-
-
-class TestWatchState:
-    def test_valid_creation(self):
-        now = datetime.now(tz=timezone.utc)
-        state = WatchState(
-            developer="sanzeeda",
-            branch="feature/retry",
-            last_publish_time=now,
-            files_tracked=["billing/retry.py"],
-        )
-        assert state.developer == "sanzeeda"
-        assert state.files_tracked == ["billing/retry.py"]
-
-    def test_empty_files_tracked(self):
-        now = datetime.now(tz=timezone.utc)
-        state = WatchState(
-            developer="dev",
-            branch="main",
-            last_publish_time=now,
-            files_tracked=[],
-        )
-        assert state.files_tracked == []
 
 
 class TestPRArtifact:
@@ -283,32 +270,6 @@ class TestSessionArtifact:
         assert sa.timeline == []
 
 
-class TestWIPArtifact:
-    def test_valid_creation(self):
-        wip = WIPArtifact(
-            developer="sanzeeda",
-            branch="feature/retry",
-            intent="implementing retry scheduler",
-            files_touched=["billing/retry.py"],
-            diff_stats="+180 -25",
-            symbols_touched=["RetryScheduler.run"],
-            modules_touched=["billing"],
-            subsystems_touched=["payments"],
-            timestamp="2026-01-15T10:00:00Z",
-        )
-        assert wip.developer == "sanzeeda"
-
-    def test_defaults(self):
-        wip = WIPArtifact(
-            developer="dev",
-            branch="main",
-            timestamp="2026-01-15T10:00:00Z",
-        )
-        assert wip.intent is None
-        assert wip.files_touched == []
-        assert wip.symbols_touched == []
-
-
 class TestDocArtifact:
     def test_valid_creation(self):
         doc = DocArtifact(
@@ -401,11 +362,10 @@ class TestModelReExports:
     """Verify models are importable from avos_cli.models."""
 
     def test_config_models_importable(self):
-        from avos_cli.models import LLMConfig, RepoConfig, SessionState, WatchState
+        from avos_cli.models import LLMConfig, RepoConfig, SessionState
 
         assert RepoConfig is not None
         assert SessionState is not None
-        assert WatchState is not None
         assert LLMConfig is not None
 
     def test_artifact_models_importable(self):
@@ -415,14 +375,12 @@ class TestModelReExports:
             IssueArtifact,
             PRArtifact,
             SessionArtifact,
-            WIPArtifact,
         )
 
         assert PRArtifact is not None
         assert IssueArtifact is not None
         assert CommitArtifact is not None
         assert SessionArtifact is not None
-        assert WIPArtifact is not None
         assert DocArtifact is not None
 
     def test_api_models_importable(self):

@@ -11,11 +11,13 @@ import pytest
 import respx
 
 from avos_cli.exceptions import AuthError, RequestContractError, UpstreamUnavailableError
-from avos_cli.services.memory_client import AvosMemoryClient
+from avos_cli.services.memory_client import AvosMemoryClient, _normalize_memory_id_for_api
 
 BASE_URL = "https://api.test.com"
 API_KEY = "sk_test_key_12345"
 MEMORY_ID = "repo:org/repo"
+# API path uses normalized form (no : or /)
+MEMORY_ID_API = _normalize_memory_id_for_api(MEMORY_ID)  # repo-org-repo
 
 
 @pytest.fixture()
@@ -23,10 +25,20 @@ def client() -> AvosMemoryClient:
     return AvosMemoryClient(api_key=API_KEY, api_url=BASE_URL)
 
 
+class TestMemoryIdNormalization:
+    """Avos Memory API path segments do not support ':' or '/' in memory_id."""
+
+    def test_repo_slug_normalized(self):
+        assert _normalize_memory_id_for_api("repo:org/repo") == "repo-org-repo"
+
+    def test_simple_id_unchanged(self):
+        assert _normalize_memory_id_for_api("my-agent") == "my-agent"
+
+
 class TestAddMemoryText:
     @respx.mock
     def test_add_text_note(self, client: AvosMemoryClient):
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes").mock(
             return_value=httpx.Response(
                 201,
                 json={
@@ -42,7 +54,7 @@ class TestAddMemoryText:
 
     @respx.mock
     def test_add_text_with_event_at(self, client: AvosMemoryClient):
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes").mock(
             return_value=httpx.Response(
                 201,
                 json={
@@ -64,7 +76,7 @@ class TestAddMemoryFile:
         test_file = tmp_path / "test.txt"
         test_file.write_text("file content")
 
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes/upload").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes/upload").mock(
             return_value=httpx.Response(
                 201,
                 json={
@@ -99,7 +111,7 @@ class TestModeExclusivity:
 class TestSearch:
     @respx.mock
     def test_search_returns_results(self, client: AvosMemoryClient):
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -122,7 +134,7 @@ class TestSearch:
 
     @respx.mock
     def test_search_empty_results(self, client: AvosMemoryClient):
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(
                 200,
                 json={"results": [], "total_count": 0},
@@ -136,14 +148,14 @@ class TestDeleteNote:
     @respx.mock
     def test_delete_returns_true_on_204(self, client: AvosMemoryClient):
         respx.delete(
-            f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes/note-123"
+            f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes/note-123"
         ).mock(return_value=httpx.Response(204))
         assert client.delete_note(MEMORY_ID, "note-123") is True
 
     @respx.mock
     def test_delete_returns_false_on_404(self, client: AvosMemoryClient):
         respx.delete(
-            f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/notes/missing"
+            f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/notes/missing"
         ).mock(return_value=httpx.Response(404, json={"detail": "Not found"}))
         assert client.delete_note(MEMORY_ID, "missing") is False
 
@@ -151,7 +163,7 @@ class TestDeleteNote:
 class TestAuthErrors:
     @respx.mock
     def test_401_raises_auth_error(self, client: AvosMemoryClient):
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(
                 401,
                 json={"error": "Unauthorized", "code": "UNAUTHORIZED"},
@@ -168,7 +180,7 @@ class TestAuthErrors:
 class TestRetryBehavior:
     @respx.mock
     def test_retries_on_503(self, client: AvosMemoryClient):
-        route = respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search")
+        route = respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search")
         route.side_effect = [
             httpx.Response(503, json={"error": "Service unavailable"}),
             httpx.Response(
@@ -182,7 +194,7 @@ class TestRetryBehavior:
 
     @respx.mock
     def test_retries_on_429(self, client: AvosMemoryClient):
-        route = respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search")
+        route = respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search")
         route.side_effect = [
             httpx.Response(429, json={"error": "Rate limited", "retry_after": 0}),
             httpx.Response(
@@ -195,7 +207,7 @@ class TestRetryBehavior:
 
     @respx.mock
     def test_raises_after_max_retries(self, client: AvosMemoryClient):
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(503, json={"error": "down"})
         )
         with pytest.raises(UpstreamUnavailableError):
@@ -231,7 +243,7 @@ class TestEndpointValidation:
 class TestApiKeyHeader:
     @respx.mock
     def test_sends_api_key_header(self, client: AvosMemoryClient):
-        route = respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        route = respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(
                 200,
                 json={"results": [], "total_count": 0},

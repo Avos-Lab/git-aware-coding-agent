@@ -11,14 +11,12 @@ from avos_cli.artifacts.doc_builder import DocBuilder
 from avos_cli.artifacts.issue_builder import IssueBuilder
 from avos_cli.artifacts.pr_builder import PRThreadBuilder
 from avos_cli.artifacts.session_builder import SessionBuilder
-from avos_cli.artifacts.wip_builder import WIPBuilder
 from avos_cli.models.artifacts import (
     CommitArtifact,
     DocArtifact,
     IssueArtifact,
     PRArtifact,
     SessionArtifact,
-    WIPArtifact,
 )
 
 
@@ -200,47 +198,6 @@ class TestSessionBuilder:
         assert h1 == h2
 
 
-class TestWIPBuilder:
-    def _make_wip(self, **overrides) -> WIPArtifact:
-        defaults = {
-            "developer": "sanzeeda",
-            "branch": "feature/retry",
-            "intent": "implementing retry scheduler",
-            "files_touched": ["billing/retry.py"],
-            "diff_stats": "+180 -25",
-            "symbols_touched": ["RetryScheduler.run"],
-            "modules_touched": ["billing"],
-            "subsystems_touched": ["payments"],
-            "timestamp": "2026-01-15T10:00:00Z",
-        }
-        defaults.update(overrides)
-        return WIPArtifact(**defaults)
-
-    def test_build_contains_type_header(self):
-        wip = self._make_wip()
-        output = WIPBuilder().build(wip)
-        assert "[type: wip_activity]" in output
-
-    def test_build_contains_metadata(self):
-        wip = self._make_wip()
-        output = WIPBuilder().build(wip)
-        assert "[developer: sanzeeda]" in output
-        assert "[branch: feature/retry]" in output
-        assert "[timestamp: 2026-01-15T10:00:00Z]" in output
-
-    def test_build_contains_intent(self):
-        wip = self._make_wip()
-        output = WIPBuilder().build(wip)
-        assert "Intent: implementing retry scheduler" in output
-
-    def test_content_hash_deterministic(self):
-        wip = self._make_wip()
-        builder = WIPBuilder()
-        h1 = builder.content_hash(wip)
-        h2 = builder.content_hash(wip)
-        assert h1 == h2
-
-
 class TestDocBuilder:
     def _make_doc(self, **overrides) -> DocArtifact:
         defaults = {
@@ -325,30 +282,6 @@ class TestBuilderEdgeCases:
         assert "Errors:" in output
         assert "Resolution:" in output
         assert "Timeline:" in output
-
-    def test_wip_no_optional_fields(self):
-        wip = WIPArtifact(developer="dev", branch="main", timestamp="2026-01-15T10:00:00Z")
-        output = WIPBuilder().build(wip)
-        assert "Intent:" not in output
-        assert "Files:" not in output
-        assert "Diff:" not in output
-        assert "Symbols:" not in output
-        assert "Modules:" not in output
-        assert "Subsystems:" not in output
-
-    def test_wip_with_all_fields(self):
-        wip = WIPArtifact(
-            developer="dev", branch="main", timestamp="2026-01-15T10:00:00Z",
-            intent="work", files_touched=["a.py"], diff_stats="+1",
-            symbols_touched=["fn"], modules_touched=["mod"], subsystems_touched=["sub"]
-        )
-        output = WIPBuilder().build(wip)
-        assert "Intent:" in output
-        assert "Files:" in output
-        assert "Diff:" in output
-        assert "Symbols:" in output
-        assert "Modules:" in output
-        assert "Subsystems:" in output
 
 
 class TestCrossBuilderHashUniqueness:

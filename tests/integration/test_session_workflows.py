@@ -34,9 +34,10 @@ def _setup_repo(tmp_path: Path) -> Path:
     config = {
         "repo": "org/test",
         "memory_id": "repo:org/test",
+        "memory_id_session": "repo:org/test-session",
         "api_url": "https://api.avos.ai",
         "api_key": "test-key",
-        "schema_version": "1",
+        "schema_version": "2",
     }
     (avos / "config.json").write_text(json.dumps(config))
     return repo
@@ -45,6 +46,7 @@ def _setup_repo(tmp_path: Path) -> Path:
 def _make_start_orchestrator(repo_root: Path) -> tuple[SessionStartOrchestrator, MagicMock]:
     git_m = MagicMock()
     git_m.current_branch.return_value = "feature/session-test"
+    git_m.is_worktree.return_value = False
     mem_m = MagicMock()
     orch = SessionStartOrchestrator(
         git_client=git_m,
@@ -56,9 +58,13 @@ def _make_start_orchestrator(repo_root: Path) -> tuple[SessionStartOrchestrator,
 
 def _make_end_orchestrator(repo_root: Path) -> tuple[SessionEndOrchestrator, MagicMock]:
     mem_m = MagicMock()
+    git_m = MagicMock()
+    git_m.user_name.return_value = "Integration Test"
+    git_m.user_email.return_value = "test@example.com"
     orch = SessionEndOrchestrator(
         memory_client=mem_m,
         llm_client=None,
+        git_client=git_m,
         repo_root=repo_root,
     )
     return orch, mem_m
@@ -259,7 +265,7 @@ class TestStaleSessionRecovery:
             "goal": "stale goal",
             "start_time": "2026-03-06T10:00:00+00:00",
             "branch": "old-branch",
-            "memory_id": "repo:org/test",
+            "memory_id": "repo:org/test-session",
         }
         (avos / "session.json").write_text(json.dumps(stale_session))
         stale_pid = {"pid": 999999, "started_at": "2026-03-06T10:00:00+00:00", "session_id": "sess_stale"}
@@ -293,7 +299,7 @@ class TestDeterministicOutput:
                 "goal": "Determinism test",
                 "start_time": "2026-03-07T10:00:00+00:00",
                 "branch": "main",
-                "memory_id": "repo:org/test",
+                "memory_id": "repo:org/test-session",
             }
             (avos / "session.json").write_text(json.dumps(session))
             pid_data = {"pid": 999999, "started_at": "2026-03-07T10:00:00+00:00", "session_id": "sess_deterministic"}
@@ -357,7 +363,7 @@ class TestStateTransitionMatrix:
             "goal": "Matrix end test",
             "start_time": "2026-03-07T10:00:00+00:00",
             "branch": "main",
-            "memory_id": "repo:org/test",
+            "memory_id": "repo:org/test-session",
         }
         (avos / "session.json").write_text(json.dumps(session))
         pid_data = {"pid": 999999, "started_at": "2026-03-07T10:00:00+00:00", "session_id": "sess_matrix"}
@@ -381,7 +387,7 @@ class TestStateTransitionMatrix:
             "goal": "Fail test",
             "start_time": "2026-03-07T10:00:00+00:00",
             "branch": "main",
-            "memory_id": "repo:org/test",
+            "memory_id": "repo:org/test-session",
         }
         (avos / "session.json").write_text(json.dumps(session))
         pid_data = {"pid": 999999, "started_at": "2026-03-07T10:00:00+00:00", "session_id": "sess_fail"}

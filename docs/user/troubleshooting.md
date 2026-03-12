@@ -20,11 +20,26 @@ Or add it to a `.env` file in your project root.
 
 **Cause:** Required for `connect` and `ingest` to access GitHub.
 
-**Solution:** Create a GitHub Personal Access Token with `repo` scope and set:
+**Solution:** Create a GitHub Personal Access Token and set it:
 
 ```bash
-export GITHUB_TOKEN="ghp_..."
+export GITHUB_TOKEN="ghp_..."   # or github_pat_... for fine-grained
 ```
+
+**Classic tokens:** Use the `repo` scope.
+
+**Fine-grained tokens (github*pat*...):**
+
+1. Go to [GitHub → Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens?type=beta)
+2. Create a fine-grained token
+3. Under **Repository access**, select **Only select repositories** and add your repo (e.g. `smahmudrahat/any_repo`)
+4. Under **Repository permissions**, set:
+   - **Metadata:** Read-only
+   - **Pull requests:** Read-only
+   - **Issues:** Read-only
+5. Generate and copy the token
+
+Without these permissions, private repos return 404 (GitHub hides existence if you lack access).
 
 ### AUTH_ERROR: ANTHROPIC_API_KEY required
 
@@ -38,25 +53,29 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 ## Repository Errors
 
+### RESOURCE_NOT_FOUND: Repository owner/repo not found on GitHub
+
+**Cause:** The token cannot access the repository. For **private repos**, this usually means:
+
+- Fine-grained token: repo not in "Repository access" list, or missing Metadata/Pull requests/Issues permissions
+- Classic token: missing `repo` scope
+- Token expired or revoked
+
+**Solution:** Ensure your token has access to the repo. For fine-grained tokens, see the GITHUB_TOKEN section above.
+
 ### REPOSITORY_CONTEXT_ERROR
 
 **Cause:** Command was run outside a git repository.
 
 **Solution:** Run from a directory that contains a `.git` folder, or from a subdirectory of such a repo.
 
-## Session and Watch Errors
+## Session Errors
 
 ### SESSION_ACTIVE_CONFLICT
 
 **Cause:** Trying to start a session when one is already active.
 
 **Solution:** Run `avos session-end` first, then `avos session-start`.
-
-### WATCH_ACTIVE_CONFLICT
-
-**Cause:** Trying to start watch when it is already running.
-
-**Solution:** Run `avos watch --stop` first.
 
 ## API and Network
 

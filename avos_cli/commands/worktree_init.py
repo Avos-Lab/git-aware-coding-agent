@@ -87,9 +87,9 @@ class WorktreeInitOrchestrator:
             style="success",
         )
         print_info("Next steps:")
-        print_info("  avos session-start \"your goal\"  - Start a session")
-        print_info("  avos team                       - See active team members")
-        print_info("  avos watch                      - Publish WIP activity")
+        print_info(
+            "  avos session-start --agent <name> \"your goal\"  - Start a session (agent required)"
+        )
 
         return 0
 

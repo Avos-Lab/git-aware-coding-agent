@@ -125,6 +125,48 @@ class GitClient:
                 })
         return commits
 
+    def commit_log_range(
+        self, repo_path: Path, old_sha: str, new_sha: str
+    ) -> list[dict[str, str]]:
+        """Get commits between two SHAs (exclusive old, inclusive new).
+
+        Used by hook-sync to get commits being pushed. The range old_sha..new_sha
+        returns commits reachable from new_sha but not from old_sha.
+
+        Args:
+            repo_path: Path to the git repository.
+            old_sha: Base commit SHA (exclusive). Use empty string for new branches.
+            new_sha: Target commit SHA (inclusive).
+
+        Returns:
+            List of dicts with keys: hash, message, author, date.
+            Returns empty list if range is invalid or empty.
+        """
+        if not new_sha:
+            return []
+
+        if old_sha:
+            range_spec = f"{old_sha}..{new_sha}"
+        else:
+            range_spec = new_sha
+
+        args = ["log", "--format=%H|%s|%an|%aI", range_spec]
+        output = self._run_git(args, repo_path)
+        if not output:
+            return []
+
+        commits: list[dict[str, str]] = []
+        for line in output.splitlines():
+            parts = line.split("|", 3)
+            if len(parts) >= 4:
+                commits.append({
+                    "hash": parts[0],
+                    "message": parts[1],
+                    "author": parts[2],
+                    "date": parts[3],
+                })
+        return commits
+
     def diff_stats(self, repo_path: Path) -> str:
         """Get diff stats for staged changes.
 

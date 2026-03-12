@@ -1,0 +1,92 @@
+# Curated instincts for avos-dev-cli workflow
+# Import with: /instinct-import .claude/instincts/avos-workflow.yaml
+
+---
+id: avos-check-history-before-edit
+trigger: "when modifying existing code in a repository with avos"
+confidence: 0.9
+domain: workflow
+source: repo-curation
+source_repo: avos-dev-cli
+---
+# Check History Before Editing
+
+## Action
+Before modifying existing code, run `avos history --json "subject"` and `avos ask --json "why was this implemented?"` to understand the context and rationale behind the code.
+
+## Evidence
+- Understanding history prevents breaking changes
+- Previous decisions often have important context
+- Related PRs and issues provide valuable information
+
+---
+id: avos-session-lifecycle
+trigger: "when starting a coding task in a repository with avos"
+confidence: 0.85
+domain: workflow
+source: repo-curation
+source_repo: avos-dev-cli
+---
+# Session Lifecycle Management
+
+## Action
+Before starting a coding task, run `avos session-status --json` to check if a session is active. If not, start one with `avos session-start --json "goal"`. End with `avos session-end --json` when complete.
+
+## Evidence
+- Sessions create audit trails for AI agent activity
+- Enterprise environments require tracking of changes
+- Session artifacts help future developers understand what was done
+
+---
+id: avos-ingest-after-pr
+trigger: "after pushing a PR to a repository with avos"
+confidence: 0.8
+domain: workflow
+source: repo-curation
+source_repo: avos-dev-cli
+---
+# Ingest PR After Push
+
+## Action
+After pushing a PR to the remote repository, run `avos ingest-pr --json org/repo PR_NUMBER` to ensure the PR context is available for future queries.
+
+## Evidence
+- PR context helps future developers understand changes
+- Ingested PRs are searchable via `avos ask` and `avos history`
+- Deduplication prevents duplicate entries
+
+---
+id: avos-search-before-implementing
+trigger: "when implementing new functionality in a repository with avos"
+confidence: 0.85
+domain: workflow
+source: repo-curation
+source_repo: avos-dev-cli
+---
+# Search Before Implementing
+
+## Action
+Before implementing new functionality, run `avos ask --json "is there existing implementation for X?"` to check if similar code already exists.
+
+## Evidence
+- Prevents code duplication
+- Maintains consistency with existing patterns
+- Leverages existing tested implementations
+
+---
+id: avos-json-output-for-agents
+trigger: "when using avos commands programmatically"
+confidence: 0.9
+domain: workflow
+source: repo-curation
+source_repo: avos-dev-cli
+---
+# Use JSON Output for Programmatic Access
+
+## Action
+Always use the `--json` flag when calling avos commands programmatically. Parse the JSON response and check `success` before using `data`.
+
+## Evidence
+- JSON output is machine-readable
+- Error codes and hints help with error handling
+- Consistent format across all commands

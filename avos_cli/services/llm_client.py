@@ -1,8 +1,8 @@
 """LLM synthesis client for query pipeline.
 
-Sends sanitized, budget-packed artifacts to the Anthropic API for
-synthesis. Supports ask and history prompt modes, structured JSON
-response parsing with text fallback, and transient/non-transient
+Supports Anthropic and OpenAI providers. Sends sanitized, budget-packed
+artifacts for synthesis. Handles ask and history prompt modes, structured
+JSON response parsing with text fallback, and transient/non-transient
 failure classification.
 """
 
@@ -24,6 +24,7 @@ from avos_cli.utils.logger import get_logger
 _log = get_logger("llm_client")
 
 _ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
+_OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 _ANTHROPIC_VERSION = "2023-06-01"
 _REQUEST_TIMEOUT = 15.0
 _MAX_TOKENS = 2048
@@ -52,27 +53,44 @@ _HISTORY_SYSTEM_PROMPT = (
 
 
 class LLMClient:
-    """HTTP client for LLM synthesis via Anthropic Messages API.
+    """HTTP client for LLM synthesis via Anthropic or OpenAI API.
 
-    Uses raw httpx (no new dependencies). Matches existing MemoryClient
-    and GitHubClient patterns for HTTP interaction.
+    Supports provider="anthropic" (default) or provider="openai".
+    Uses raw httpx (no new dependencies).
 
     Args:
-        api_key: Anthropic API key.
-        api_url: Override for Anthropic API URL (testing).
+        api_key: API key for the chosen provider.
+        provider: "anthropic" or "openai".
+        api_url: Override for API URL (testing).
     """
 
-    def __init__(self, api_key: str, api_url: str | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        provider: str = "anthropic",
+        api_url: str | None = None,
+    ) -> None:
         self._api_key = api_key
-        self._api_url = api_url or _ANTHROPIC_API_URL
-        self._client = httpx.Client(
-            headers={
+        self._provider = provider.lower()
+        if api_url:
+            self._api_url = api_url
+        elif self._provider == "openai":
+            self._api_url = _OPENAI_API_URL
+        else:
+            self._api_url = _ANTHROPIC_API_URL
+
+        if self._provider == "openai":
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+        else:
+            headers = {
                 "x-api-key": api_key,
                 "anthropic-version": _ANTHROPIC_VERSION,
                 "content-type": "application/json",
-            },
-            timeout=_REQUEST_TIMEOUT,
-        )
+            }
+        self._client = httpx.Client(headers=headers, timeout=_REQUEST_TIMEOUT)
 
     def synthesize(self, request: SynthesisRequest) -> SynthesisResponse:
         """Send synthesis request to LLM and parse response.
@@ -89,12 +107,24 @@ class LLMClient:
         messages = self._build_messages(request)
         system_prompt = self._get_system_prompt(request.mode)
 
-        body = {
-            "model": request.model,
-            "max_tokens": _MAX_TOKENS,
-            "system": system_prompt,
-            "messages": messages,
-        }
+        if self._provider == "openai":
+            # OpenAI: system as first message, no top-level system key
+            body = {
+                "model": request.model,
+                "max_tokens": _MAX_TOKENS,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    *messages,
+                ],
+            }
+        else:
+            # Anthropic: top-level system, messages array
+            body = {
+                "model": request.model,
+                "max_tokens": _MAX_TOKENS,
+                "system": system_prompt,
+                "messages": messages,
+            }
 
         try:
             response = self._client.post(self._api_url, json=body)
@@ -121,7 +151,7 @@ class LLMClient:
                 failure_class="non_transient",
             )
 
-        return self._parse_response(response.json())
+        return self._parse_response(response.json(), self._provider)
 
     def _build_messages(self, request: SynthesisRequest) -> list[dict[str, str]]:
         """Build the messages array for the Anthropic API.
@@ -164,28 +194,36 @@ class LLMClient:
             )
         return "\n\n".join(blocks)
 
-    def _parse_response(self, data: dict) -> SynthesisResponse:
-        """Parse Anthropic API response into SynthesisResponse.
+    def _parse_response(self, data: dict, provider: str) -> SynthesisResponse:
+        """Parse LLM API response into SynthesisResponse.
 
-        Tries JSON structured output first, falls back to plain text.
+        Anthropic: content[].type=text, text. OpenAI: choices[0].message.content.
         """
-        content_blocks = data.get("content", [])
-        if not content_blocks:
-            raise LLMSynthesisError(
-                "Empty content in LLM response", failure_class="non_transient"
+        if provider == "openai":
+            choices = data.get("choices", [])
+            if not choices:
+                raise LLMSynthesisError(
+                    "Empty choices in OpenAI response", failure_class="non_transient"
+                )
+            msg = choices[0].get("message", {})
+            raw_text = msg.get("content")
+            if raw_text is None or raw_text == "":
+                raise LLMSynthesisError(
+                    "No content in OpenAI response", failure_class="non_transient"
+                )
+        else:
+            content_blocks = data.get("content", [])
+            if not content_blocks:
+                raise LLMSynthesisError(
+                    "Empty content in LLM response", failure_class="non_transient"
+                )
+            text_block = next(
+                (b for b in content_blocks if b.get("type") == "text"), None
             )
+            if text_block is None:
+                raise LLMSynthesisError(
+                    "No text block in LLM response", failure_class="non_transient"
+                )
+            raw_text = text_block["text"]
 
-        text_block = next(
-            (b for b in content_blocks if b.get("type") == "text"), None
-        )
-        if text_block is None:
-            raise LLMSynthesisError(
-                "No text block in LLM response", failure_class="non_transient"
-            )
-
-        raw_text = text_block["text"]
-
-        # Always return the full raw text so citation validator can extract
-        # structured citations from the JSON. The orchestrator extracts the
-        # display answer separately after grounding validation.
         return SynthesisResponse(answer_text=raw_text, warnings=[])

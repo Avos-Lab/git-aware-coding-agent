@@ -11,14 +11,12 @@ from avos_cli.models.artifacts import (
     IssueArtifact,
     PRArtifact,
     SessionArtifact,
-    WIPArtifact,
 )
 from avos_cli.models.config import (
     LLMConfig,
     RepoConfig,
     SessionCheckpoint,
     SessionState,
-    WatchState,
     WatcherPidState,
 )
 from avos_cli.models.query import (
@@ -51,8 +49,6 @@ __all__ = [
     "SessionArtifact",
     "SessionCheckpoint",
     "SessionState",
-    "WIPArtifact",
-    "WatchState",
     "WatcherPidState",
     "BudgetResult",
     "FallbackReason",

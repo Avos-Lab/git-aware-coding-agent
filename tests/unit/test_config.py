@@ -40,6 +40,7 @@ def valid_config_data() -> dict:
     return {
         "repo": "org/repo",
         "memory_id": "repo:org/repo",
+        "memory_id_session": "repo:org/repo-session",
         "api_url": "https://api.example.com",
         "api_key": "sk_test_key_12345",
     }
@@ -70,7 +71,11 @@ class TestFindRepoRoot:
 
 
 class TestLoadConfig:
-    def test_loads_valid_config(self, avos_dir: Path, valid_config_data: dict):
+    def test_loads_valid_config(
+        self, avos_dir: Path, valid_config_data: dict, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.delenv("AVOS_API_KEY", raising=False)
+        monkeypatch.delenv("AVOS_API_URL", raising=False)
         config_path = avos_dir / "config.json"
         config_path.write_text(json.dumps(valid_config_data))
 

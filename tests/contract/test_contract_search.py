@@ -14,11 +14,12 @@ import pytest
 import respx
 
 from avos_cli.exceptions import AuthError, UpstreamUnavailableError
-from avos_cli.services.memory_client import AvosMemoryClient
+from avos_cli.services.memory_client import AvosMemoryClient, _normalize_memory_id_for_api
 
 BASE_URL = "https://api.contract.test"
 API_KEY = "sk_contract_test_key"
 MEMORY_ID = "repo:org/repo"
+MEMORY_ID_API = _normalize_memory_id_for_api(MEMORY_ID)
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "contracts"
 
 
@@ -39,7 +40,7 @@ class TestSearchContractSuccess:
     @respx.mock
     def test_post_shape_and_success_envelope(self, client: AvosMemoryClient) -> None:
         fixture = _load_fixture("search_success.json")
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(200, json=fixture)
         )
         result = client.search(MEMORY_ID, query="test query", k=5, mode="semantic")
@@ -53,7 +54,7 @@ class TestSearchContractSuccess:
     @respx.mock
     def test_empty_results_envelope(self, client: AvosMemoryClient) -> None:
         fixture = _load_fixture("search_empty.json")
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(200, json=fixture)
         )
         result = client.search(MEMORY_ID, query="nonexistent")
@@ -62,7 +63,7 @@ class TestSearchContractSuccess:
 
     @respx.mock
     def test_request_has_query_k_mode(self, client: AvosMemoryClient) -> None:
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(200, json=_load_fixture("search_empty.json"))
         )
         client.search(MEMORY_ID, query="my query", k=10, mode="hybrid")
@@ -79,7 +80,7 @@ class TestSearchContractErrors:
 
     @respx.mock
     def test_401_raises_auth_error(self, client: AvosMemoryClient) -> None:
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(401, json=_load_fixture("error_401.json"))
         )
         with pytest.raises(AuthError):
@@ -87,7 +88,7 @@ class TestSearchContractErrors:
 
     @respx.mock
     def test_404_raises_upstream_error(self, client: AvosMemoryClient) -> None:
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(404, json={"detail": "Memory not found"})
         )
         with pytest.raises(UpstreamUnavailableError):
@@ -95,7 +96,7 @@ class TestSearchContractErrors:
 
     @respx.mock
     def test_422_raises_upstream_error(self, client: AvosMemoryClient) -> None:
-        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID}/search").mock(
+        respx.post(f"{BASE_URL}/api/v1/memories/{MEMORY_ID_API}/search").mock(
             return_value=httpx.Response(422, json=_load_fixture("error_422.json"))
         )
         with pytest.raises(UpstreamUnavailableError):

@@ -34,7 +34,7 @@ from avos_cli.services.git_client import GitClient
 from avos_cli.services.github_client import GitHubClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success, render_table
+from avos_cli.utils.output import print_error, print_info, print_json, print_success, render_table
 from avos_cli.utils.time_helpers import days_ago
 
 _log = get_logger("commands.ingest")
@@ -124,18 +124,21 @@ class IngestOrchestrator:
         self._commit_builder = CommitBuilder()
         self._doc_builder = DocBuilder()
 
-    def run(self, repo_slug: str, since_days: int) -> int:
+    def run(self, repo_slug: str, since_days: int, json_output: bool = False) -> int:
         """Execute the ingest flow.
 
         Args:
             repo_slug: Repository identifier in 'org/repo' format.
             since_days: Number of days to look back.
+            json_output: If True, emit JSON output instead of human UI.
 
         Returns:
             Exit code: 0, 1, 2, or 3.
         """
+        self._json_output = json_output
+
         if not self._validate_slug(repo_slug):
-            print_error("[REPOSITORY_CONTEXT_ERROR] Invalid repo slug. Expected 'org/repo'.")
+            self._emit_error("REPOSITORY_CONTEXT_ERROR", "Invalid repo slug. Expected 'org/repo'.")
             return 1
 
         owner, repo = repo_slug.split("/", 1)
@@ -143,22 +146,35 @@ class IngestOrchestrator:
         try:
             config = load_config(self._repo_root)
         except ConfigurationNotInitializedError as e:
-            print_error(f"[CONFIG_NOT_INITIALIZED] {e}")
+            self._emit_error("CONFIG_NOT_INITIALIZED", str(e), hint="Run 'avos connect org/repo' first.")
             return 1
         except AvosError as e:
-            print_error(f"[{e.code}] {e}")
+            self._emit_error(e.code, str(e))
             return 1
 
         try:
             self._lock.acquire()
         except IngestLockError as e:
-            print_error(f"[INGEST_LOCK_CONFLICT] {e}")
+            self._emit_error("INGEST_LOCK_CONFLICT", str(e))
             return 1
 
         try:
             return self._run_pipeline(owner, repo, repo_slug, config.memory_id, since_days)
         finally:
             self._lock.release()
+
+    def _emit_error(
+        self, code: str, message: str, hint: str | None = None, retryable: bool = False
+    ) -> None:
+        """Emit error in JSON or human format based on mode."""
+        if self._json_output:
+            print_json(
+                success=False,
+                data=None,
+                error={"code": code, "message": message, "hint": hint, "retryable": retryable},
+            )
+        else:
+            print_error(f"[{code}] {message}")
 
     def _run_pipeline(
         self, owner: str, repo: str, repo_slug: str, memory_id: str, since_days: int
@@ -167,18 +183,21 @@ class IngestOrchestrator:
         since_date = days_ago(since_days).isoformat()
         results: list[IngestStageResult] = []
 
-        print_info(f"Ingesting {repo_slug} (last {since_days} days)")
-
-        print_info("[Stage 1/4: PRs]")
+        if not self._json_output:
+            print_info(f"Ingesting {repo_slug} (last {since_days} days)")
+            print_info("[Stage 1/4: PRs]")
         results.append(self._ingest_prs(owner, repo, since_date, memory_id))
 
-        print_info("[Stage 2/4: Issues]")
+        if not self._json_output:
+            print_info("[Stage 2/4: Issues]")
         results.append(self._ingest_issues(owner, repo, since_date, memory_id))
 
-        print_info("[Stage 3/4: Commits]")
+        if not self._json_output:
+            print_info("[Stage 3/4: Commits]")
         results.append(self._ingest_commits(repo_slug, since_date, memory_id))
 
-        print_info("[Stage 4/4: Docs]")
+        if not self._json_output:
+            print_info("[Stage 4/4: Docs]")
         results.append(self._ingest_docs(repo_slug, memory_id))
 
         self._hash_store.save()
@@ -236,11 +255,14 @@ class IngestOrchestrator:
             return result
 
         total = len(issue_list)
-        for idx, issue_data in enumerate(issue_list, 1):
+        for idx, issue_summary in enumerate(issue_list, 1):
             result.processed += 1
-            print_info(f"  Issue {idx}/{total}: #{issue_data.get('number', '?')}")
+            print_info(f"  Issue {idx}/{total}: #{issue_summary.get('number', '?')}")
             try:
-                artifact = self._build_issue_artifact(repo, owner, issue_data)
+                issue_detail = self._github.get_issue_details(
+                    owner, repo, issue_summary["number"]
+                )
+                artifact = self._build_issue_artifact(repo, owner, issue_detail)
                 text = self._issue_builder.build(artifact)
                 content_hash = self._issue_builder.content_hash(artifact)
 
@@ -249,10 +271,10 @@ class IngestOrchestrator:
                     continue
 
                 self._memory.add_memory(memory_id=memory_id, content=text)
-                self._hash_store.add(content_hash, "issue", str(issue_data["number"]))
+                self._hash_store.add(content_hash, "issue", str(issue_summary["number"]))
                 result.stored += 1
             except Exception as e:
-                _log.error("Failed to ingest issue #%s: %s", issue_data.get("number"), e)
+                _log.error("Failed to ingest issue #%s: %s", issue_summary.get("number"), e)
                 result.failed += 1
 
         return result
@@ -384,11 +406,22 @@ class IngestOrchestrator:
         self, repo: str, owner: str, issue_data: dict[str, Any]
     ) -> IssueArtifact:
         """Transform GitHub issue dict into an IssueArtifact."""
-        labels = [lbl["name"] for lbl in issue_data.get("labels", [])]
-        comments = [
-            f"{c.get('user', {}).get('login', 'unknown')}: {c.get('body', '')}"
-            for c in issue_data.get("comments", [])
-        ]
+        raw_labels = issue_data.get("labels", [])
+        labels = (
+            [lbl["name"] for lbl in raw_labels if isinstance(lbl, dict) and "name" in lbl]
+            if isinstance(raw_labels, list)
+            else []
+        )
+        raw_comments = issue_data.get("comments", [])
+        comments = (
+            [
+                f"{c.get('user', {}).get('login', 'unknown')}: {c.get('body', '')}"
+                for c in raw_comments
+                if isinstance(c, dict)
+            ]
+            if isinstance(raw_comments, list)
+            else []
+        )
         return IssueArtifact(
             repo=f"{owner}/{repo}",
             issue_number=issue_data["number"],
@@ -418,18 +451,36 @@ class IngestOrchestrator:
         return bool(parts[0]) and bool(parts[1])
 
     def _print_summary(self, results: list[IngestStageResult]) -> None:
-        """Print a summary of all ingest stages as a Rich table."""
+        """Print a summary of all ingest stages as a Rich table or JSON."""
         stage_names = ["PRs", "Issues", "Commits", "Docs"]
         total_stored = 0
         total_skipped = 0
         total_failed = 0
 
+        stage_data = {}
         rows: list[list[str]] = []
         for name, r in zip(stage_names, results, strict=True):
             rows.append([name, str(r.stored), str(r.skipped), str(r.failed)])
+            stage_data[name.lower()] = {"stored": r.stored, "skipped": r.skipped, "failed": r.failed}
             total_stored += r.stored
             total_skipped += r.skipped
             total_failed += r.failed
+
+        if self._json_output:
+            print_json(
+                success=total_failed == 0,
+                data={
+                    "prs_ingested": stage_data.get("prs", {}).get("stored", 0),
+                    "issues_ingested": stage_data.get("issues", {}).get("stored", 0),
+                    "commits_ingested": stage_data.get("commits", {}).get("stored", 0),
+                    "docs_ingested": stage_data.get("docs", {}).get("stored", 0),
+                    "skipped_duplicates": total_skipped,
+                    "failed": total_failed,
+                    "stages": stage_data,
+                },
+                error={"code": "PARTIAL_FAILURE", "message": f"{total_failed} items failed"} if total_failed > 0 else None,
+            )
+            return
 
         if total_failed > 0:
             title = (

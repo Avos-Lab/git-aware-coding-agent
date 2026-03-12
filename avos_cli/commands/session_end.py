@@ -21,14 +21,20 @@ from pathlib import Path
 from avos_cli.artifacts.session_builder import SessionBuilder
 from avos_cli.config.manager import load_config
 from avos_cli.config.state import read_json_safe
-from avos_cli.exceptions import AvosError, ConfigurationNotInitializedError
+from avos_cli.exceptions import (
+    AvosError,
+    ConfigurationNotInitializedError,
+    RepositoryContextError,
+)
 from avos_cli.models.artifacts import SessionArtifact
 from avos_cli.models.config import SessionCheckpoint
+from avos_cli.services.git_client import GitClient
 from avos_cli.services.watcher import parse_checkpoints
 from avos_cli.utils.logger import get_logger
 from avos_cli.utils.output import (
     print_error,
     print_info,
+    print_json,
     print_success,
     print_warning,
     render_kv_panel,
@@ -49,6 +55,7 @@ class SessionEndOrchestrator:
     Args:
         memory_client: Avos Memory API client.
         llm_client: Optional LLM client for narrative enrichment.
+        git_client: Local git operations for resolving author (user.name, user.email).
         repo_root: Path to the repository root.
     """
 
@@ -56,33 +63,44 @@ class SessionEndOrchestrator:
         self,
         memory_client: object,
         llm_client: object | None,
+        git_client: GitClient,
         repo_root: Path,
     ) -> None:
         self._memory = memory_client
         self._llm = llm_client
+        self._git = git_client
         self._repo_root = repo_root
         self._avos_dir = repo_root / ".avos"
         self._session_builder = SessionBuilder()
 
-    def run(self) -> int:
+    def run(self, json_output: bool = False) -> int:
         """Execute the session end flow.
+
+        Args:
+            json_output: If True, emit JSON output instead of human UI.
 
         Returns:
             Exit code: 0 success, 1 precondition, 2 external failure.
         """
+        self._json_output = json_output
+
         try:
             config = load_config(self._repo_root)
         except ConfigurationNotInitializedError as e:
-            print_error(f"[CONFIG_NOT_INITIALIZED] {e}")
+            self._emit_error("CONFIG_NOT_INITIALIZED", str(e), hint="Run 'avos connect org/repo' first.")
             return 1
         except AvosError as e:
-            print_error(f"[{e.code}] {e}")
+            self._emit_error(e.code, str(e))
             return 1
 
         session_path = self._avos_dir / "session.json"
         session_data = read_json_safe(session_path)
         if session_data is None:
-            print_error("[SESSION_NOT_FOUND] No active session. Run 'avos session-start' first.")
+            self._emit_error(
+                "SESSION_NOT_FOUND",
+                "No active session.",
+                hint="Run 'avos session-start' first.",
+            )
             return 1
 
         session_id = str(session_data.get("session_id", ""))
@@ -100,36 +118,83 @@ class SessionEndOrchestrator:
         if malformed_count > 0:
             msg = f"CHECKPOINT_MALFORMED: {malformed_count} malformed checkpoint line(s) skipped."
             warnings_list.append(msg)
-            print_warning(msg)
+            if not json_output:
+                print_warning(msg)
 
         if not checkpoints:
             msg = "CHECKPOINT_EMPTY: No checkpoint data captured. Creating minimal artifact."
             warnings_list.append(msg)
-            print_warning(msg)
+            if not json_output:
+                print_warning(msg)
 
-        artifact = self._build_artifact(session_id, goal, branch, checkpoints)
+        author = self._resolve_author()
+        artifact = self._build_artifact(session_id, goal, branch, author, checkpoints)
         artifact_text = self._session_builder.build(artifact)
 
         try:
             self._memory.add_memory(memory_id=memory_id, content=artifact_text)
         except Exception as e:
             _log.error("Failed to store session artifact: %s", e)
-            print_error(f"[UPSTREAM_UNAVAILABLE] Could not store session artifact: {e}")
-            self._cleanup_pid_only()
-            print_warning(
-                "STORE_FAILED: Session and checkpoint files preserved for recovery. "
-                "Re-run 'avos session-end' when the API is available."
+            self._emit_error(
+                "UPSTREAM_UNAVAILABLE",
+                f"Could not store session artifact: {e}",
+                hint="Re-run 'avos session-end' when the API is available.",
+                retryable=True,
             )
+            self._cleanup_pid_only()
+            if not json_output:
+                print_warning(
+                    "STORE_FAILED: Session and checkpoint files preserved for recovery. "
+                    "Re-run 'avos session-end' when the API is available."
+                )
             return 2
 
         residuals = self._cleanup_all()
         if residuals:
             msg = f"CLEANUP_PARTIAL: Could not remove: {', '.join(residuals)}"
             warnings_list.append(msg)
-            print_warning(msg)
+            if not json_output:
+                print_warning(msg)
 
-        self._print_summary(session_id, goal, checkpoints, warnings_list)
+        all_files: set[str] = set()
+        total_added = 0
+        total_removed = 0
+        for cp in checkpoints:
+            all_files.update(cp.files_modified)
+            total_added += cp.diff_stats.get("added", 0)
+            total_removed += cp.diff_stats.get("removed", 0)
+
+        if json_output:
+            print_json(
+                success=True,
+                data={
+                    "session_id": session_id,
+                    "goal": goal,
+                    "author": author,
+                    "files_modified": sorted(all_files),
+                    "checkpoints": len(checkpoints),
+                    "changes": f"+{total_added}/-{total_removed}",
+                    "warnings": warnings_list,
+                },
+                error=None,
+            )
+        else:
+            self._print_summary(session_id, goal, author, checkpoints, warnings_list)
+
         return 0
+
+    def _emit_error(
+        self, code: str, message: str, hint: str | None = None, retryable: bool = False
+    ) -> None:
+        """Emit error in JSON or human format based on mode."""
+        if self._json_output:
+            print_json(
+                success=False,
+                data=None,
+                error={"code": code, "message": message, "hint": hint, "retryable": retryable},
+            )
+        else:
+            print_error(f"[{code}] {message}")
 
     def _stop_watcher(self, session_id: str, warnings_list: list[str]) -> None:
         """Stop the watcher process if alive, with ownership verification.
@@ -185,11 +250,29 @@ class SessionEndOrchestrator:
             time.sleep(0.2)
         _log.warning("Watcher PID %d did not exit within timeout", pid)
 
+    def _resolve_author(self) -> str:
+        """Resolve developer identity from git config (user.name, user.email).
+
+        Returns:
+            'Name <email>' if both set, 'Name' if only name, else 'unknown'.
+        """
+        try:
+            name = self._git.user_name(self._repo_root).strip()
+            email = self._git.user_email(self._repo_root).strip()
+        except (AvosError, RepositoryContextError):
+            return "unknown"
+        if not name:
+            return "unknown"
+        if email:
+            return f"{name} <{email}>"
+        return name
+
     def _build_artifact(
         self,
         session_id: str,
         goal: str,
         branch: str,
+        author: str,
         checkpoints: list[SessionCheckpoint],
     ) -> SessionArtifact:
         """Aggregate checkpoints into a SessionArtifact.
@@ -227,6 +310,7 @@ class SessionEndOrchestrator:
         return SessionArtifact(
             session_id=session_id,
             goal=goal,
+            author=author,
             files_modified=sorted(all_files),
             decisions=decisions,
             errors=all_errors[:20],
@@ -260,6 +344,7 @@ class SessionEndOrchestrator:
         self,
         session_id: str,
         goal: str,
+        author: str,
         checkpoints: list[SessionCheckpoint],
         warnings_list: list[str],
     ) -> None:
@@ -272,16 +357,26 @@ class SessionEndOrchestrator:
             total_added += cp.diff_stats.get("added", 0)
             total_removed += cp.diff_stats.get("removed", 0)
 
+        kv_rows: list[tuple[str, str]] = [
+            ("Goal", goal),
+            ("Author", author or "unknown"),
+            ("Checkpoints", str(len(checkpoints))),
+            ("Files touched", str(len(all_files))),
+            ("Total changes", f"+{total_added} / -{total_removed}"),
+        ]
         render_kv_panel(
             f"Session Ended: {session_id}",
-            [
-                ("Goal", goal),
-                ("Checkpoints", str(len(checkpoints))),
-                ("Files touched", str(len(all_files))),
-                ("Total changes", f"+{total_added} / -{total_removed}"),
-            ],
+            kv_rows,
             style="success",
         )
+
+        if all_files:
+            file_rows = [[p] for p in sorted(all_files)]
+            render_table(
+                "Files modified",
+                [("Path", "")],
+                file_rows,
+            )
 
         if checkpoints:
             timeline_rows: list[list[str]] = []

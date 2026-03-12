@@ -9,7 +9,6 @@ from avos_cli.artifacts.doc_builder import DocBuilder
 from avos_cli.artifacts.issue_builder import IssueBuilder
 from avos_cli.artifacts.pr_builder import PRThreadBuilder
 from avos_cli.artifacts.session_builder import SessionBuilder
-from avos_cli.artifacts.wip_builder import WIPBuilder
 
 __all__ = [
     "CommitBuilder",
@@ -17,5 +16,4 @@ __all__ = [
     "IssueBuilder",
     "PRThreadBuilder",
     "SessionBuilder",
-    "WIPBuilder",
 ]

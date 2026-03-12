@@ -24,9 +24,10 @@ def _make_config_json(avos_dir: Path) -> None:
     config = {
         "repo": "org/test",
         "memory_id": "repo:org/test",
+        "memory_id_session": "repo:org/test-session",
         "api_url": "https://api.avos.ai",
         "api_key": "test-key",
-        "schema_version": "1",
+        "schema_version": "2",
     }
     (avos_dir / "config.json").write_text(json.dumps(config))
 
@@ -38,7 +39,7 @@ def _make_session_state(avos_dir: Path, session_id: str = "sess_abc123") -> None
         "goal": "Implement feature X",
         "start_time": "2026-03-07T10:00:00+00:00",
         "branch": "feature/test",
-        "memory_id": "repo:org/test",
+        "memory_id": "repo:org/test-session",
     }
     (avos_dir / "session.json").write_text(json.dumps(session))
 
@@ -67,10 +68,15 @@ def _make_checkpoints(avos_dir: Path, count: int = 2, session_id: str = "sess_ab
     (avos_dir / "session_checkpoints.jsonl").write_text("\n".join(lines) + "\n")
 
 
-def _make_orchestrator(repo_root: Path, llm_client=None) -> SessionEndOrchestrator:
+def _make_orchestrator(repo_root: Path, llm_client=None, git_client=None) -> SessionEndOrchestrator:
+    if git_client is None:
+        git_client = MagicMock()
+        git_client.user_name.return_value = "Test User"
+        git_client.user_email.return_value = "test@example.com"
     return SessionEndOrchestrator(
         memory_client=MagicMock(),
         llm_client=llm_client,
+        git_client=git_client,
         repo_root=repo_root,
     )
 
@@ -125,6 +131,7 @@ class TestHappyPath:
         if not content_arg:
             content_arg = str(orchestrator._memory.add_memory.call_args)
         assert "Implement feature X" in content_arg or "feature" in content_arg.lower()
+        assert "[author:" in content_arg
 
 
 class TestDeadWatcher:

@@ -191,7 +191,6 @@ class TestWorktreeAddOrchestrator:
         source_avos = connected_repo / ".avos"
         (source_avos / "session.json").write_text('{"session_id": "old"}')
         (source_avos / "watcher.pid").write_text('{"pid": 99999}')
-        (source_avos / "watch.pid").write_text('{"pid": 88888}')
 
         wt_path = connected_repo.parent / "wt-copy-test"
         orch = WorktreeAddOrchestrator(
@@ -207,7 +206,6 @@ class TestWorktreeAddOrchestrator:
         assert (new_avos / "config.json").exists()
         assert not (new_avos / "session.json").exists()
         assert not (new_avos / "watcher.pid").exists()
-        assert not (new_avos / "watch.pid").exists()
 
     def test_config_content_matches_source(self, connected_repo: Path):
         """Copied config.json should have identical content to source."""

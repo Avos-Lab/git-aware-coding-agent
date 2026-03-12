@@ -107,17 +107,23 @@ def _apply_env_overlay(data: dict[str, Any]) -> None:
         if value is not None:
             data[config_key] = value
 
-    llm_provider = os.environ.get("AVOS_LLM_PROVIDER")
-    llm_model = os.environ.get("AVOS_LLM_MODEL")
-    if llm_provider or llm_model:
-        llm_data = data.get("llm", {})
-        if not isinstance(llm_data, dict):
-            llm_data = {}
-        if llm_provider:
-            llm_data["provider"] = llm_provider
-        if llm_model:
-            llm_data["model"] = llm_model
-        data["llm"] = llm_data
+    llm_data = data.get("llm", {})
+    if not isinstance(llm_data, dict):
+        llm_data = {}
+    llm_provider_env = os.environ.get("AVOS_LLM_PROVIDER")
+    llm_model_env = os.environ.get("AVOS_LLM_MODEL")
+    if llm_provider_env:
+        llm_data["provider"] = llm_provider_env
+    if llm_model_env:
+        llm_data["model"] = llm_model_env
+    # When provider is openai (from file or env) and model is Anthropic default,
+    # use gpt-4o to avoid passing claude-* to OpenAI
+    provider = llm_data.get("provider", "anthropic")
+    if provider.lower() == "openai" and not llm_model_env:
+        model = llm_data.get("model", "claude-sonnet-4-5-20250929")
+        if model.startswith("claude-"):
+            llm_data["model"] = "gpt-4o"
+    data["llm"] = llm_data
 
 
 def save_config(repo_root: Path, config_data: dict[str, Any]) -> None:

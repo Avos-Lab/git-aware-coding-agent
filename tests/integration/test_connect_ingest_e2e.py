@@ -126,8 +126,9 @@ class TestConnectThenIngestE2E:
         assert config_path.exists()
         config = json.loads(config_path.read_text())
         assert config["memory_id"] == "repo:testorg/testrepo"
+        assert config["memory_id_session"] == "repo:testorg/testrepo-session"
         assert config["repo"] == "testorg/testrepo"
-        assert config["schema_version"] == "1"
+        assert config["schema_version"] == "2"
         assert "connected_at" in config
 
     def test_connect_sends_bootstrap_note(
@@ -144,8 +145,8 @@ class TestConnectThenIngestE2E:
             repo_root=e2e_repo,
         )
         orch.run("testorg/testrepo")
-        mock_memory_client.add_memory.assert_called_once()
-        call_kwargs = mock_memory_client.add_memory.call_args
+        assert mock_memory_client.add_memory.call_count == 2  # Memory A and Memory B
+        call_kwargs = mock_memory_client.add_memory.call_args_list[0]
         assert "repo_connected" in str(call_kwargs)
 
     def test_ingest_stores_artifacts(

@@ -1,7 +1,7 @@
 """Configuration and state models for AVOS CLI.
 
 Defines RepoConfig (repository-scoped runtime configuration),
-SessionState (active session lifecycle), WatchState (watch loop state),
+SessionState (active session lifecycle), WatcherPidState (session watcher),
 and LLMConfig (LLM provider settings).
 """
 
@@ -34,7 +34,8 @@ class RepoConfig(BaseModel):
 
     Args:
         repo: Repository slug in 'org/repo' format.
-        memory_id: Deterministic memory identifier, format 'repo:org/repo'.
+        memory_id: Memory A (past) - 'repo:org/repo' for PR history, commits, issues, docs.
+        memory_id_session: Memory B (session) - 'repo:org/repo-session' for WIP, session artifacts.
         api_url: Base URL for the Avos Memory API.
         api_key: API key for Avos Memory (secret).
         github_token: GitHub personal access token (secret, optional).
@@ -48,6 +49,7 @@ class RepoConfig(BaseModel):
 
     repo: str
     memory_id: str
+    memory_id_session: str
     api_url: str
     api_key: SecretStr
     github_token: SecretStr | None = None
@@ -78,27 +80,6 @@ class SessionState(BaseModel):
     start_time: datetime
     branch: str
     memory_id: str
-
-
-class WatchState(BaseModel):
-    """Watch loop state for publish watermarking.
-
-    Written to .avos/watch_state.json by the watch process.
-    Forward-compatible contract frozen in Sprint 1.
-
-    Args:
-        developer: Developer identity string.
-        branch: Current Git branch.
-        last_publish_time: UTC timestamp of last WIP artifact publish.
-        files_tracked: List of file paths currently being tracked.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    developer: str
-    branch: str
-    last_publish_time: datetime
-    files_tracked: list[str]
 
 
 class WatcherPidState(BaseModel):

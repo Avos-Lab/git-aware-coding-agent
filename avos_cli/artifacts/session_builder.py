@@ -24,6 +24,8 @@ class SessionBuilder(BaseArtifactBuilder):
         lines: list[str] = []
         lines.append("[type: session]")
         lines.append(f"[session: {model.session_id}]")
+        if model.author:
+            lines.append(f"[author: {model.author}]")
         lines.append(f"Goal: {model.goal}")
         if model.files_modified:
             lines.append(f"Files modified: {', '.join(model.files_modified)}")

@@ -94,6 +94,7 @@ def main(
 
 @app.command()
 def connect(
+    ctx: typer.Context,
     repo: str = typer.Argument(..., help="Repository slug in 'org/repo' format."),
 ) -> None:
     """Connect a repository to Avos Memory."""
@@ -103,6 +104,8 @@ def connect(
     from avos_cli.services.git_client import GitClient
     from avos_cli.services.github_client import GitHubClient
     from avos_cli.services.memory_client import AvosMemoryClient
+
+    json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
@@ -127,7 +130,7 @@ def connect(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         repo_root=repo_root,
     )
-    code = orchestrator.run(repo)
+    code = orchestrator.run(repo, json_output=json_output)
     raise typer.Exit(code)
 
 
@@ -147,6 +150,7 @@ def _parse_since_days(value: str) -> int:
 
 @app.command()
 def ingest(
+    ctx: typer.Context,
     repo: str = typer.Argument(..., help="Repository slug in 'org/repo' format."),
     since: str = typer.Option("90d", "--since", help="Time window, e.g. '90d' for 90 days."),
 ) -> None:
@@ -160,6 +164,7 @@ def ingest(
     from avos_cli.services.github_client import GitHubClient
     from avos_cli.services.memory_client import AvosMemoryClient
 
+    json_output = ctx.obj.get("json", False)
     since_days = _parse_since_days(since)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
@@ -191,7 +196,54 @@ def ingest(
         lock_manager=IngestLockManager(avos_dir),
         repo_root=repo_root,
     )
-    code = orchestrator.run(repo, since_days=since_days)
+    code = orchestrator.run(repo, since_days=since_days, json_output=json_output)
+    raise typer.Exit(code)
+
+
+@app.command(name="ingest-pr")
+def ingest_pr(
+    ctx: typer.Context,
+    repo: str = typer.Argument(..., help="Repository slug in 'org/repo' format."),
+    pr_number: int = typer.Argument(..., help="PR number to ingest."),
+) -> None:
+    """Ingest a single PR into Avos Memory."""
+    from avos_cli.commands.ingest_pr import IngestPROrchestrator
+    from avos_cli.config.hash_store import IngestHashStore
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+    from avos_cli.services.github_client import GitHubClient
+    from avos_cli.services.memory_client import AvosMemoryClient
+
+    json_output = ctx.obj.get("json", False)
+
+    api_key = os.environ.get("AVOS_API_KEY", "")
+    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+    github_token = os.environ.get("GITHUB_TOKEN", "")
+
+    if not api_key:
+        print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
+        raise typer.Exit(1)
+    if not github_token:
+        print_error("[AUTH_ERROR] GITHUB_TOKEN environment variable is required.")
+        raise typer.Exit(1)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    avos_dir = repo_root / ".avos"
+    hash_store = IngestHashStore(avos_dir)
+    hash_store.load()
+
+    orchestrator = IngestPROrchestrator(
+        memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
+        github_client=GitHubClient(token=github_token),
+        hash_store=hash_store,
+        repo_root=repo_root,
+    )
+    code = orchestrator.run(repo, pr_number, json_output=json_output)
     raise typer.Exit(code)
 
 
@@ -256,6 +308,7 @@ def ask(
 
 @app.command(name="session-ask")
 def session_ask(
+    ctx: typer.Context,
     question: str = typer.Argument(
         ..., help="Natural language question about session/live context."
     ),
@@ -269,6 +322,8 @@ def session_ask(
     )
     from avos_cli.services.llm_client import LLMClient
     from avos_cli.services.memory_client import AvosMemoryClient
+
+    json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
@@ -308,7 +363,7 @@ def session_ask(
         repo_root=repo_root,
         reply_service=reply_service,
     )
-    code = orchestrator.run(config.repo, question)
+    code = orchestrator.run(config.repo, question, json_output=json_output)
     raise typer.Exit(code)
 
 
@@ -373,6 +428,7 @@ def history(
 
 @app.command(name="session-start")
 def session_start(
+    ctx: typer.Context,
     goal: str = typer.Argument(..., help="Session goal description."),
     agent: str | None = typer.Option(
         None, "--agent", help="Custom agent/developer name (e.g. 'agentA')."
@@ -384,6 +440,8 @@ def session_start(
     from avos_cli.exceptions import RepositoryContextError
     from avos_cli.services.git_client import GitClient
     from avos_cli.services.memory_client import AvosMemoryClient
+
+    json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
@@ -403,18 +461,20 @@ def session_start(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         repo_root=repo_root,
     )
-    code = orchestrator.run(goal, agent=agent)
+    code = orchestrator.run(goal, agent=agent, json_output=json_output)
     raise typer.Exit(code)
 
 
 @app.command(name="session-end")
-def session_end() -> None:
+def session_end(ctx: typer.Context) -> None:
     """End the current coding session and store a session memory artifact."""
     from avos_cli.commands.session_end import SessionEndOrchestrator
     from avos_cli.config.manager import find_repo_root
     from avos_cli.exceptions import RepositoryContextError
     from avos_cli.services.git_client import GitClient
     from avos_cli.services.memory_client import AvosMemoryClient
+
+    json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
@@ -435,7 +495,27 @@ def session_end() -> None:
         git_client=GitClient(),
         repo_root=repo_root,
     )
-    code = orchestrator.run()
+    code = orchestrator.run(json_output=json_output)
+    raise typer.Exit(code)
+
+
+@app.command(name="session-status")
+def session_status(ctx: typer.Context) -> None:
+    """Check if a coding session is currently active."""
+    from avos_cli.commands.session_status import SessionStatusOrchestrator
+    from avos_cli.config.manager import find_repo_root
+    from avos_cli.exceptions import RepositoryContextError
+
+    json_output = ctx.obj.get("json", False)
+
+    try:
+        repo_root = find_repo_root(Path.cwd())
+    except RepositoryContextError as e:
+        print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+        raise typer.Exit(1) from e
+
+    orchestrator = SessionStatusOrchestrator(repo_root=repo_root)
+    code = orchestrator.run(json_output=json_output)
     raise typer.Exit(code)
 
 

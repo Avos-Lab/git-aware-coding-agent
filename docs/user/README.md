@@ -46,14 +46,17 @@ avos ask "How does authentication work?"
 
 ## Command Reference
 
-| Command                                    | Description                                   |
-| ------------------------------------------ | --------------------------------------------- |
-| [connect](commands/connect.md)             | Connect a repository to Avos Memory           |
-| [ingest](commands/ingest.md)               | Ingest repository history                     |
-| [ask](commands/ask.md)                     | Ask questions and get evidence-backed answers |
-| [history](commands/history.md)             | Get chronological history of a subject        |
-| [session-start](commands/session-start.md) | Start a coding session                        |
-| [session-end](commands/session-end.md)     | End the current session                       |
+| Command                                      | Description                                   |
+| -------------------------------------------- | --------------------------------------------- |
+| [connect](commands/connect.md)               | Connect a repository to Avos Memory           |
+| [ingest](commands/ingest.md)                 | Ingest repository history                     |
+| [ingest-pr](commands/ingest-pr.md)           | Ingest a single PR                            |
+| [ask](commands/ask.md)                       | Ask questions and get evidence-backed answers |
+| [history](commands/history.md)               | Get chronological history of a subject        |
+| [session-start](commands/session-start.md)   | Start a coding session                        |
+| [session-end](commands/session-end.md)       | End the current session                       |
+| [session-status](commands/session-status.md) | Check if a session is active                  |
+| [session-ask](commands/session-ask.md)       | Ask questions about current session           |
 
 ## Global Options
 
@@ -62,14 +65,18 @@ avos ask "How does authentication work?"
 
 ## JSON Output Mode (For AI Agents)
 
-Use `--json` to get strict JSON output for `ask` and `history` commands:
+All commands support `--json` for machine-readable output:
 
 ```bash
 avos --json ask "How does authentication work?"
 avos --json history "payment retry logic"
+avos --json session-status
+avos --json session-start "Implement feature X"
+avos --json session-end
+avos --json ingest-pr org/repo 123
 ```
 
-JSON mode requires the reply model configuration:
+For `ask` and `history` commands, JSON mode requires the reply model configuration:
 
 | Variable              | Description                                                 |
 | --------------------- | ----------------------------------------------------------- |
@@ -77,9 +84,50 @@ JSON mode requires the reply model configuration:
 | `REPLY_MODEL_URL`     | API endpoint (OpenAI-compatible chat completions)           |
 | `REPLY_MODEL_API_KEY` | API key for the reply model                                 |
 
-Output follows a strict envelope: `{"success": bool, "data": {...}, "error": {...}}`.
+Output follows a strict envelope:
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "error": null
+}
+```
+
+On error:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable message",
+    "hint": "How to fix it",
+    "retryable": true
+  }
+}
+```
 
 See [ask](commands/ask.md) and [history](commands/history.md) for schema details.
+
+## AI Agent Integration
+
+avos-dev-cli is designed to work seamlessly with AI coding agents. Integration files are provided for:
+
+- **Cursor IDE**: `.cursor/rules/` and `.cursor/skills/`
+- **Claude Code**: `.claude/` with commands, agents, and instincts
+- **OpenAI Codex**: `.codex/` (community stub)
+
+See `.agents/README.md` for the integration guide.
+
+### Agent Workflow
+
+1. **Start session**: `avos session-start --json "goal"`
+2. **Research**: `avos history --json "subject"` and `avos ask --json "question"`
+3. **Code**: Make your changes
+4. **End session**: `avos session-end --json`
+5. **After PR**: `avos ingest-pr --json org/repo PR_NUMBER`
 
 ## Troubleshooting
 

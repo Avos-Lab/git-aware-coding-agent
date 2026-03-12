@@ -23,11 +23,12 @@ from avos_cli.services.git_client import GitClient
 from avos_cli.services.github_client import GitHubClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success, render_kv_panel
+from avos_cli.utils.output import print_error, print_info, print_json, print_success, render_kv_panel
 
 _log = get_logger("commands.connect")
 
 _BOOTSTRAP_MARKER = "repo_connected"
+_SESSION_BOOTSTRAP_MARKER = "session_connected"
 
 
 class ConnectOrchestrator:
@@ -55,17 +56,20 @@ class ConnectOrchestrator:
         self._memory = memory_client
         self._repo_root = repo_root
 
-    def run(self, repo_slug: str) -> int:
+    def run(self, repo_slug: str, json_output: bool = False) -> int:
         """Execute the connect flow.
 
         Args:
             repo_slug: Repository identifier in 'org/repo' format.
+            json_output: If True, emit JSON output instead of human UI.
 
         Returns:
             Exit code: 0=success, 1=local precondition, 2=hard external.
         """
+        self._json_output = json_output
+
         if not self._validate_slug(repo_slug):
-            print_error("[REPOSITORY_CONTEXT_ERROR] Invalid repo slug format. Expected 'org/repo'.")
+            self._emit_error("REPOSITORY_CONTEXT_ERROR", "Invalid repo slug format. Expected 'org/repo'.")
             return 1
 
         owner, repo = repo_slug.split("/", 1)
@@ -77,23 +81,62 @@ class ConnectOrchestrator:
             return self._last_exit_code
 
         memory_id = f"repo:{repo_slug}"
+        memory_id_session = f"repo:{repo_slug}-session"
 
-        if not self._verify_avos_access(memory_id):
+        if not self._verify_avos_access(memory_id, _BOOTSTRAP_MARKER):
             return self._last_exit_code
 
-        if not self._bootstrap_exists and not self._send_bootstrap_note(memory_id, repo_slug):
+        if not self._bootstrap_exists and not self._send_bootstrap_note(
+            memory_id, repo_slug, _BOOTSTRAP_MARKER
+        ):
             return self._last_exit_code
 
-        self._write_config(repo_slug, memory_id)
-        render_kv_panel(
-            f"Connected to {repo_slug}",
-            [
-                ("Memory ID", memory_id),
-                ("Next step", "avos ingest"),
-            ],
-            style="success",
-        )
+        if not self._verify_avos_access(memory_id_session, _SESSION_BOOTSTRAP_MARKER):
+            return self._last_exit_code
+
+        if not self._bootstrap_exists and not self._send_bootstrap_note(
+            memory_id_session, repo_slug, _SESSION_BOOTSTRAP_MARKER
+        ):
+            return self._last_exit_code
+
+        self._write_config(repo_slug, memory_id, memory_id_session)
+
+        config_path = str(self._repo_root / ".avos" / "config.json")
+        if json_output:
+            print_json(
+                success=True,
+                data={
+                    "repo": repo_slug,
+                    "memory_id": memory_id,
+                    "memory_id_session": memory_id_session,
+                    "config_path": config_path,
+                },
+                error=None,
+            )
+        else:
+            render_kv_panel(
+                f"Connected to {repo_slug}",
+                [
+                    ("Memory A (past)", memory_id),
+                    ("Memory B (session)", memory_id_session),
+                    ("Next step", "avos ingest"),
+                ],
+                style="success",
+            )
         return 0
+
+    def _emit_error(
+        self, code: str, message: str, hint: str | None = None, retryable: bool = False
+    ) -> None:
+        """Emit error in JSON or human format based on mode."""
+        if self._json_output:
+            print_json(
+                success=False,
+                data=None,
+                error={"code": code, "message": message, "hint": hint, "retryable": retryable},
+            )
+        else:
+            print_error(f"[{code}] {message}")
 
     def _validate_slug(self, slug: str) -> bool:
         """Validate that slug is in 'org/repo' format."""
@@ -111,17 +154,17 @@ class ConnectOrchestrator:
         try:
             remote = self._git.remote_origin(self._repo_root)
         except (RepositoryContextError, AvosError) as e:
-            print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
+            self._emit_error("REPOSITORY_CONTEXT_ERROR", str(e))
             return False
 
         if remote is None:
-            print_error("[REPOSITORY_CONTEXT_ERROR] No origin remote found.")
+            self._emit_error("REPOSITORY_CONTEXT_ERROR", "No origin remote found.")
             return False
 
         if remote != repo_slug:
-            print_error(
-                f"[REPOSITORY_CONTEXT_ERROR] Remote origin '{remote}' "
-                f"does not match '{repo_slug}'."
+            self._emit_error(
+                "REPOSITORY_CONTEXT_ERROR",
+                f"Remote origin '{remote}' does not match '{repo_slug}'.",
             )
             return False
 
@@ -135,24 +178,25 @@ class ConnectOrchestrator:
         try:
             accessible = self._github.validate_repo(owner, repo)
         except AuthError as e:
-            print_error(f"[AUTH_ERROR] GitHub: {e}")
+            self._emit_error("AUTH_ERROR", f"GitHub: {e}")
             self._last_exit_code = 1
             return False
         except UpstreamUnavailableError as e:
-            print_error(f"[UPSTREAM_UNAVAILABLE] GitHub: {e}")
+            self._emit_error("UPSTREAM_UNAVAILABLE", f"GitHub: {e}", retryable=True)
             self._last_exit_code = 2
             return False
 
         if not accessible:
-            print_error(
-                f"[RESOURCE_NOT_FOUND] Repository {owner}/{repo} not found on GitHub."
+            self._emit_error(
+                "RESOURCE_NOT_FOUND",
+                f"Repository {owner}/{repo} not found on GitHub.",
             )
             self._last_exit_code = 1
             return False
 
         return True
 
-    def _verify_avos_access(self, memory_id: str) -> bool:
+    def _verify_avos_access(self, memory_id: str, marker: str) -> bool:
         """Check Avos Memory API access and whether bootstrap note exists.
 
         Sets self._bootstrap_exists and self._last_exit_code.
@@ -160,42 +204,50 @@ class ConnectOrchestrator:
         try:
             result = self._memory.search(
                 memory_id=memory_id,
-                query=f"[type: {_BOOTSTRAP_MARKER}]",
+                query=f"[type: {marker}]",
                 k=1,
             )
             self._bootstrap_exists = bool(result.results)
             return True
         except AuthError as e:
-            print_error(f"[AUTH_ERROR] Avos Memory: {e}")
+            self._emit_error("AUTH_ERROR", f"Avos Memory: {e}")
             self._last_exit_code = 1
             return False
         except UpstreamUnavailableError as e:
-            print_error(f"[UPSTREAM_UNAVAILABLE] Avos Memory: {e}")
+            self._emit_error("UPSTREAM_UNAVAILABLE", f"Avos Memory: {e}", retryable=True)
             self._last_exit_code = 2
             return False
 
-    def _send_bootstrap_note(self, memory_id: str, repo_slug: str) -> bool:
+    def _send_bootstrap_note(
+        self, memory_id: str, repo_slug: str, marker: str
+    ) -> bool:
         """Send the bootstrap note to Avos Memory.
 
         Sets self._last_exit_code on failure.
         """
         content = (
-            f"[type: {_BOOTSTRAP_MARKER}]\n"
+            f"[type: {marker}]\n"
             f"Repository {repo_slug} connected to Avos Memory"
         )
         try:
             self._memory.add_memory(memory_id=memory_id, content=content)
             return True
         except UpstreamUnavailableError as e:
-            print_error(f"[UPSTREAM_UNAVAILABLE] Failed to store bootstrap note: {e}")
+            self._emit_error(
+                "UPSTREAM_UNAVAILABLE",
+                f"Failed to store bootstrap note: {e}",
+                retryable=True,
+            )
             self._last_exit_code = 2
             return False
         except AvosError as e:
-            print_error(f"[{e.code}] Failed to store bootstrap note: {e}")
+            self._emit_error(e.code, f"Failed to store bootstrap note: {e}")
             self._last_exit_code = 2
             return False
 
-    def _write_config(self, repo_slug: str, memory_id: str) -> None:
+    def _write_config(
+        self, repo_slug: str, memory_id: str, memory_id_session: str
+    ) -> None:
         """Write .avos/config.json only if content would change.
 
         Preserves connected_at from existing config to guarantee
@@ -205,16 +257,22 @@ class ConnectOrchestrator:
         existing = read_json_safe(config_path) if config_path.exists() else None
 
         connected_at = datetime.now(tz=timezone.utc).isoformat()
-        if existing and existing.get("repo") == repo_slug and existing.get("memory_id") == memory_id:
+        if (
+            existing
+            and existing.get("repo") == repo_slug
+            and existing.get("memory_id") == memory_id
+            and existing.get("memory_id_session") == memory_id_session
+        ):
             connected_at = str(existing.get("connected_at", connected_at))
 
         new_data = {
             "repo": repo_slug,
             "memory_id": memory_id,
+            "memory_id_session": memory_id_session,
             "api_url": "",
             "api_key": "",
             "connected_at": connected_at,
-            "schema_version": "1",
+            "schema_version": "2",
         }
 
         if existing is not None:

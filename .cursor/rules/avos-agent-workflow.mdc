@@ -1,0 +1,146 @@
+---
+description: Avos memory workflow for AI coding agents. Guides session lifecycle, codebase search, and history lookup.
+alwaysApply: true
+---
+
+# Avos Agent Workflow
+
+This repository uses **avos-dev-cli** for codebase memory and session tracking. Follow these rules when working on this codebase.
+
+## Session Lifecycle
+
+### Starting a Session
+
+Before making any code changes, start a session to create an audit trail:
+
+```bash
+# Check if a session is already active
+avos session-status --json
+
+# If no session is active, start one
+avos session-start "your goal description"
+
+# In a worktree, always specify --agent
+avos session-start --agent agentA "your goal description"
+```
+
+The goal should describe what you're trying to accomplish (e.g., "Fix authentication bug in login flow", "Add pagination to user list API").
+
+### During a Session
+
+The session automatically captures:
+- Files you modify
+- Diff statistics (+lines/-lines)
+- Test commands detected
+- Errors encountered
+
+### Ending a Session
+
+When your task is complete, end the session:
+
+```bash
+avos session-end --json
+```
+
+This stores a session artifact in memory for future reference.
+
+## Before Modifying Code
+
+### Always Check History First
+
+Before modifying existing code, especially unfamiliar code:
+
+```bash
+# Get chronological history of a subject
+avos history --json "authentication module"
+
+# Ask specific questions about the codebase
+avos ask --json "why does the login function use JWT instead of sessions?"
+```
+
+This helps you understand:
+- Why the code was written this way
+- Who made previous changes and why
+- Related PRs, issues, and commits
+
+### Search Before Writing
+
+Before implementing new features:
+
+```bash
+# Check if similar functionality exists
+avos ask --json "is there existing pagination logic?"
+
+# Understand patterns used in the codebase
+avos ask --json "how do other API endpoints handle errors?"
+```
+
+## After Pushing Changes
+
+After pushing a PR to the remote repository, ingest it:
+
+```bash
+avos ingest-pr org/repo PR_NUMBER --json
+```
+
+This ensures the PR context is available for future queries.
+
+## JSON Output for Agents
+
+All commands support `--json` for machine-readable output:
+
+```bash
+avos session-status --json
+avos session-start --json "goal"
+avos session-end --json
+avos ask --json "question"
+avos history --json "subject"
+avos ingest-pr --json org/repo 123
+```
+
+The JSON envelope format:
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "error": null
+}
+```
+
+On error:
+
+```json
+{
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable message",
+    "hint": "How to fix it",
+    "retryable": true
+  }
+}
+```
+
+## Required Environment Variables
+
+Ensure these are set:
+
+- `AVOS_API_KEY` - Avos Memory API key
+- `GITHUB_TOKEN` - GitHub personal access token
+- `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` - For LLM synthesis
+
+For JSON output formatting:
+
+- `REPLY_MODEL` - Model identifier for reply formatting
+- `REPLY_MODEL_URL` - API endpoint URL
+- `REPLY_MODEL_API_KEY` - API key for reply model
+
+## Workflow Summary
+
+1. **Start**: `avos session-status --json` → `avos session-start --json "goal"`
+2. **Research**: `avos history --json "subject"` and `avos ask --json "question"`
+3. **Code**: Make your changes
+4. **End**: `avos session-end --json`
+5. **After PR**: `avos ingest-pr --json org/repo PR_NUMBER`

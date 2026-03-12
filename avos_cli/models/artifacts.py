@@ -87,6 +87,7 @@ class SessionArtifact(BaseModel):
     Args:
         session_id: Unique session identifier.
         goal: Session goal description.
+        author: Developer identity from git config (name, optionally with email). Defaults to "unknown".
         files_modified: Files modified during the session.
         decisions: Key decisions made during the session.
         errors: Errors encountered during the session.
@@ -98,39 +99,12 @@ class SessionArtifact(BaseModel):
 
     session_id: str
     goal: str
+    author: str = ""
     files_modified: list[str] = []
     decisions: list[str] = []
     errors: list[str] = []
     resolution: str | None = None
     timeline: list[str] = []
-
-
-class WIPArtifact(BaseModel):
-    """Work-in-progress data for the WIPBuilder.
-
-    Args:
-        developer: Developer identity string.
-        branch: Current Git branch.
-        intent: Inferred work intent (from branch name or commits).
-        files_touched: File paths modified.
-        diff_stats: Summary of lines added/removed.
-        symbols_touched: Function/class symbols modified.
-        modules_touched: Module names affected.
-        subsystems_touched: Subsystem names affected.
-        timestamp: ISO 8601 timestamp of the snapshot.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    developer: str
-    branch: str
-    timestamp: str
-    intent: str | None = None
-    files_touched: list[str] = []
-    diff_stats: str | None = None
-    symbols_touched: list[str] = []
-    modules_touched: list[str] = []
-    subsystems_touched: list[str] = []
 
 
 class DocArtifact(BaseModel):
