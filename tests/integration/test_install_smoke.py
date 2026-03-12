@@ -11,6 +11,12 @@ import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+_ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from terminal output."""
+    return _ANSI_ESCAPE_RE.sub("", text)
 
 
 def test_avos_entrypoint_available() -> None:
@@ -23,7 +29,7 @@ def test_avos_entrypoint_available() -> None:
         cwd=REPO_ROOT,
     )
     assert result.returncode == 0, f"avos --version failed: {result.stderr}"
-    out = (result.stdout + result.stderr).strip()
+    out = _strip_ansi(result.stdout + result.stderr).strip()
     assert "avos" in out.lower(), f"Expected 'avos' in output: {out}"
     # Version format: avos X.Y.Z
     match = re.search(r"avos\s+(\d+\.\d+\.\d+)", out, re.IGNORECASE)
@@ -48,4 +54,5 @@ def test_pip_install_and_avos_version() -> None:
         timeout=10,
     )
     assert version.returncode == 0
-    assert "avos" in (version.stdout + version.stderr).lower()
+    combined = _strip_ansi(version.stdout + version.stderr).lower()
+    assert "avos" in combined

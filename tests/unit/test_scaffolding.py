@@ -7,6 +7,7 @@ the CLI entry point works, and the exception hierarchy is well-formed.
 from __future__ import annotations
 
 import importlib
+import re
 import subprocess
 import sys
 from unittest.mock import patch
@@ -33,6 +34,17 @@ from avos_cli.exceptions import (
 )
 
 runner = CliRunner()
+_ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from terminal output."""
+    return _ANSI_ESCAPE_RE.sub("", text)
+
+
+def _normalized(text: str) -> str:
+    """Normalize CLI output for stable assertions across environments."""
+    return _strip_ansi(text)
 
 
 class TestPackageImport:
@@ -120,22 +132,23 @@ class TestCLIEntryPoint:
     def test_version_flag(self):
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert "1.0.0" in result.stdout
+        assert "1.0.0" in _normalized(result.stdout)
 
     def test_version_short_flag(self):
         result = runner.invoke(app, ["-v"])
         assert result.exit_code == 0
-        assert "1.0.0" in result.stdout
+        assert "1.0.0" in _normalized(result.stdout)
 
     def test_no_args_shows_help(self):
         result = runner.invoke(app, [])
         assert result.exit_code == 0
-        assert "Developer memory CLI" in result.stdout or "Usage" in result.stdout
+        normalized = _normalized(result.stdout)
+        assert "Developer memory CLI" in normalized or "Usage" in normalized
 
     def test_help_flag(self):
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "--version" in result.stdout
+        assert "--version" in _strip_ansi(result.stdout)
 
 
 class TestExceptionHierarchy:
@@ -265,4 +278,5 @@ class TestPipInstall:
             timeout=15,
         )
         # Typer apps invoked via __main__ should show help
-        assert result.returncode == 0 or "Usage" in result.stdout or "avos" in result.stdout
+        normalized = _normalized(result.stdout)
+        assert result.returncode == 0 or "Usage" in normalized or "avos" in normalized
