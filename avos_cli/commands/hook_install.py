@@ -75,11 +75,12 @@ class HookInstallOrchestrator:
         self._git = git_client
         self._repo_root = repo_root
 
-    def run(self, force: bool = False) -> int:
+    def run(self, force: bool = False, quiet: bool = False) -> int:
         """Install the pre-push hook for automatic commit sync.
 
         Args:
             force: If True, overwrite existing hook without prompting.
+            quiet: If True, suppress all output (for auto-install from connect).
 
         Returns:
             Exit code: 0 on success, 1 on failure.
@@ -87,44 +88,54 @@ class HookInstallOrchestrator:
         try:
             config = load_config(self._repo_root)
         except ConfigurationNotInitializedError:
-            print_error(
-                "[CONFIG_NOT_INITIALIZED] Repository not connected. "
-                "Run 'avos connect org/repo' first."
-            )
+            if not quiet:
+                print_error(
+                    "[CONFIG_NOT_INITIALIZED] Repository not connected. "
+                    "Run 'avos connect org/repo' first."
+                )
             return 1
         except AvosError as e:
-            print_error(f"[{e.code}] {e}")
+            if not quiet:
+                print_error(f"[{e.code}] {e}")
             return 1
 
         hooks_dir = self._get_hooks_dir()
         if hooks_dir is None:
-            print_error("[REPOSITORY_CONTEXT_ERROR] Could not locate .git/hooks directory.")
+            if not quiet:
+                print_error("[REPOSITORY_CONTEXT_ERROR] Could not locate .git/hooks directory.")
             return 1
 
         hook_path = hooks_dir / "pre-push"
 
         if hook_path.exists() and not force:
             if self._is_avos_hook(hook_path):
-                print_info("Avos pre-push hook is already installed.")
+                if not quiet:
+                    print_info("Avos pre-push hook is already installed.")
                 return 0
             else:
-                print_warning(
-                    "A pre-push hook already exists and was not installed by avos.\n"
-                    "Use --force to overwrite, or manually integrate avos hook-sync."
-                )
+                if not quiet:
+                    print_warning(
+                        "A pre-push hook already exists and was not installed by avos.\n"
+                        "Use --force to overwrite, or manually integrate avos hook-sync."
+                    )
+                _log.debug("Existing non-avos hook found, skipping auto-install")
                 return 1
 
         try:
             self._install_hook(hook_path)
         except OSError as e:
-            print_error(f"[HOOK_INSTALL_ERROR] Failed to install hook: {e}")
+            if not quiet:
+                print_error(f"[HOOK_INSTALL_ERROR] Failed to install hook: {e}")
             return 1
 
-        print_success(f"Installed pre-push hook: {hook_path}")
-        print_info(
-            "Commits will now auto-sync to Avos Memory on every git push.\n"
-            f"Connected to memory: {config.memory_id}"
-        )
+        if not quiet:
+            print_success(f"Installed pre-push hook: {hook_path}")
+            print_info(
+                "Commits will now auto-sync to Avos Memory on every git push.\n"
+                f"Connected to memory: {config.memory_id}"
+            )
+        else:
+            _log.debug("Auto-installed pre-push hook at %s", hook_path)
         return 0
 
     def _get_hooks_dir(self) -> Path | None:

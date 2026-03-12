@@ -105,6 +105,9 @@ class ConnectOrchestrator:
 
         self._write_config(repo_slug, memory_id, memory_id_session)
 
+        # Auto-install pre-push hook for automatic commit sync
+        hook_installed = self._auto_install_hook()
+
         config_path = str(self._repo_root / ".avos" / "config.json")
         if json_output:
             print_json(
@@ -114,15 +117,18 @@ class ConnectOrchestrator:
                     "memory_id": memory_id,
                     "memory_id_session": memory_id_session,
                     "config_path": config_path,
+                    "hook_installed": hook_installed,
                 },
                 error=None,
             )
         else:
+            hook_status = "installed" if hook_installed else "skipped (existing hook found)"
             render_kv_panel(
                 f"Connected to {repo_slug}",
                 [
                     ("Memory A (past)", memory_id),
                     ("Memory B (session)", memory_id_session),
+                    ("Pre-push hook", hook_status),
                     ("Next step", "avos ingest"),
                 ],
                 style="success",
@@ -286,3 +292,25 @@ class ConnectOrchestrator:
                 return
 
         save_config(self._repo_root, new_data)
+
+    def _auto_install_hook(self) -> bool:
+        """Silently attempt to install pre-push hook after connect.
+
+        This is best-effort: connect succeeds even if hook install fails.
+        The hook enables automatic commit sync to Avos Memory on every
+        git push, keeping team memory up-to-date without manual ingest.
+
+        Returns:
+            True if hook was installed or already exists, False otherwise.
+        """
+        from avos_cli.commands.hook_install import HookInstallOrchestrator
+
+        hook_orch = HookInstallOrchestrator(
+            git_client=self._git,
+            repo_root=self._repo_root,
+        )
+        exit_code = hook_orch.run(force=False, quiet=True)
+        if exit_code != 0:
+            _log.debug("Hook auto-install skipped or failed (exit=%d)", exit_code)
+            return False
+        return True

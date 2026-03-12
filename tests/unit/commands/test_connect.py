@@ -294,3 +294,105 @@ class TestRepoSlugParsing:
     def test_empty_slug_returns_1(self, orchestrator: ConnectOrchestrator):
         code = orchestrator.run("")
         assert code == 1
+
+
+class TestAutoHookInstall:
+    """Tests for automatic pre-push hook installation on connect."""
+
+    def test_hook_installed_on_successful_connect(
+        self, orchestrator: ConnectOrchestrator, git_repo: Path
+    ):
+        """Hook should be auto-installed when connect succeeds."""
+        code = orchestrator.run("myorg/myrepo")
+        assert code == 0
+        hook_path = git_repo / ".git" / "hooks" / "pre-push"
+        assert hook_path.exists(), "Pre-push hook should be auto-installed"
+        content = hook_path.read_text()
+        assert "avos hook-sync" in content
+
+    def test_hook_is_executable(
+        self, orchestrator: ConnectOrchestrator, git_repo: Path
+    ):
+        """Installed hook should have executable permissions."""
+        import stat
+
+        orchestrator.run("myorg/myrepo")
+        hook_path = git_repo / ".git" / "hooks" / "pre-push"
+        mode = hook_path.stat().st_mode
+        assert mode & stat.S_IXUSR, "Hook should be executable by owner"
+
+    def test_connect_succeeds_even_if_hook_exists(
+        self, orchestrator: ConnectOrchestrator, git_repo: Path
+    ):
+        """Connect should succeed even if a non-avos hook already exists."""
+        hooks_dir = git_repo / ".git" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        existing_hook = hooks_dir / "pre-push"
+        existing_hook.write_text("#!/bin/sh\necho 'custom hook'\n")
+
+        code = orchestrator.run("myorg/myrepo")
+        assert code == 0, "Connect should succeed even if hook install is skipped"
+        content = existing_hook.read_text()
+        assert "custom hook" in content, "Existing hook should not be overwritten"
+
+    def test_json_output_includes_hook_installed_true(
+        self, orchestrator: ConnectOrchestrator, git_repo: Path, capsys: pytest.CaptureFixture[str]
+    ):
+        """JSON output should include hook_installed=true when hook is installed."""
+        code = orchestrator.run("myorg/myrepo", json_output=True)
+        assert code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["success"] is True
+        assert data["data"]["hook_installed"] is True
+
+    def test_json_output_includes_hook_installed_false_when_skipped(
+        self, orchestrator: ConnectOrchestrator, git_repo: Path, capsys: pytest.CaptureFixture[str]
+    ):
+        """JSON output should include hook_installed=false when hook is skipped."""
+        hooks_dir = git_repo / ".git" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        existing_hook = hooks_dir / "pre-push"
+        existing_hook.write_text("#!/bin/sh\necho 'custom hook'\n")
+
+        code = orchestrator.run("myorg/myrepo", json_output=True)
+        assert code == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["success"] is True
+        assert data["data"]["hook_installed"] is False
+
+    def test_hook_not_installed_when_connect_fails(
+        self,
+        mock_git_client: MagicMock,
+        mock_github_client: MagicMock,
+        mock_memory_client: MagicMock,
+        git_repo: Path,
+    ):
+        """Hook should not be installed if connect fails early."""
+        mock_github_client.validate_repo.side_effect = AuthError(
+            "Bad token", service="GitHub"
+        )
+        orch = ConnectOrchestrator(
+            git_client=mock_git_client,
+            github_client=mock_github_client,
+            memory_client=mock_memory_client,
+            repo_root=git_repo,
+        )
+        code = orch.run("myorg/myrepo")
+        assert code == 1
+        hook_path = git_repo / ".git" / "hooks" / "pre-push"
+        assert not hook_path.exists(), "Hook should not be installed on failed connect"
+
+    def test_rerun_connect_does_not_reinstall_hook(
+        self, orchestrator: ConnectOrchestrator, git_repo: Path
+    ):
+        """Rerunning connect should detect existing avos hook and skip reinstall."""
+        orchestrator.run("myorg/myrepo")
+        hook_path = git_repo / ".git" / "hooks" / "pre-push"
+        first_mtime = hook_path.stat().st_mtime
+
+        orchestrator.run("myorg/myrepo")
+        assert hook_path.stat().st_mtime == first_mtime, (
+            "Hook file should not be rewritten on rerun"
+        )

@@ -1,20 +1,78 @@
-# Avos-dev-CLI
+# avos-dev-cli
 
-**Portable memory for codebases, AI agents, and engineering teams.**
+**Git history for AI agents.**
 
-Avos adds a memory layer on top of your repository so AI agents and humans can understand **what changed**, **why it changed**, and **how it was built** — before they modify existing code. And during the AI coding session, you can audit, which agent was doing during the session and this Session memory can be a **supporting evidence** for complience.
+<p align="center">
+  <video src="docs/assets/avos-dev-cli.mp4" controls width="100%"></video>
+</p>
+
+**Demo video:** [docs/assets/avos-dev-cli.mp4](docs/assets/avos-dev-cli.mp4)
+
+Avos gives AI coding agents persistent, queryable memory so they can remember **why code exists**, **what decisions shaped it**, and **how it was built** — before they modify it.
 
 ```
-connect -> ingest -> ask / history -> session-start -> code -> session-end
+┌─────────────────────────────────────────────────────────────────┐
+│                    Developer / AI Agent                         │
+│              (Claude Code, Cursor, Terminal)                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        Avos CLI                                 │
+│    connect · ingest · ask · history · session-start · session-end│
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Avos Memory Layer                           │
+├─────────────────────────────┬───────────────────────────────────┤
+│   Repository Memory         │   Session Memory                  │
+│   ├── PRs & commits         │   ├── session goals               │
+│   ├── issues & comments     │   ├── files touched               │
+│   ├── documentation         │   ├── decisions made              │
+│   └── historical context    │   └── audit trail                 │
+└─────────────────────────────┴───────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│          Agents retrieve context before reasoning               │
+│                    or modifying code                            │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 Works with **Claude Code**, **Cursor**, and the **terminal**. Python 3.10+. Apache-2.0.
 
 ---
 
-## Why Avos-CLI exists
+## Quick Start (60 seconds)
 
-AI coding agents can read the current file tree, but that is not the same as knowing:
+```bash
+# Install
+pip install avos-dev-cli
+
+# Set credentials
+export AVOS_API_KEY="your-key"
+export GITHUB_TOKEN="your-token"
+
+# Connect your repository
+avos connect org/repo
+
+# Ingest history (last 90 days)
+avos ingest org/repo --since 90d
+
+# Ask a question
+avos ask "Why do we use Kafka here?"
+```
+
+That's it. Your repository now has queryable memory.
+
+---
+
+## The Problem
+
+AI coding agents forget.
+
+They can read the current file tree, but they cannot know:
 
 - why a function exists
 - what constraints shaped a module
@@ -22,13 +80,28 @@ AI coding agents can read the current file tree, but that is not the same as kno
 - what happened in previous PRs
 - how a feature was implemented across a session
 
-That gap causes bad rewrites, sudden refactorying, repeated mistakes, and fragile changes.
+This causes bad rewrites, repeated mistakes, and fragile changes.
 
-Avos fixes it by attaching **portable memory** to a repository with two memory planes that persist across agents, sessions, and contributors.
+## The Solution
+
+Avos attaches **portable memory** to your repository.
+
+Agents can query this memory before reasoning about code, giving them long-term context about the system — not just the current snapshot.
 
 ---
 
-## Two memory planes
+## What Avos Enables
+
+- **Persistent memory** across agent sessions
+- **PR-aware reasoning** about past changes
+- **Queryable knowledge** from code, docs, and artifacts
+- **Traceable decision history** for agents
+- **Audit trails** for compliance and accountability
+- **Portable memory** that moves between agents and tools
+
+---
+
+## Two Memory Planes
 
 ### Repository Memory (long-term)
 
@@ -46,67 +119,47 @@ Together, these let you understand both the **history of the repository** and th
 
 ---
 
-## Quick start
+## Example Use Cases
 
-### 1. Install
+### AI coding agents
 
-# Clone the GitHub repository
-
-git clone https://github.com/Avos-Lab/avos-dev-cli.git
-
-# Then install locally (adjust the path to where you cloned the repo)
-
-pip install -e /path/to/avos-dev-cli
-
-# Or, if published on PyPI, you can use:
-
-# pip install avos-dev-cli
-
-### 2. Set environment variables
+Agents can remember previous design decisions and reuse solutions across sessions.
 
 ```bash
-export AVOS_API_KEY="your-avos-api-key"
-export GITHUB_TOKEN="your-github-token"
-
-# For LLM synthesis (ask / history)
-export ANTHROPIC_API_KEY="your-key"   # or OPENAI_API_KEY
-
-# Optional: for --json output formatting
-export REPLY_MODEL="your-model-id"
-export REPLY_MODEL_URL="https://api.example.com/v1/chat/completions"
-export REPLY_MODEL_API_KEY="your-reply-model-key"
+avos ask "Why was retry scheduler added?"
+avos history "retry scheduler"
 ```
 
-### 3. Connect and ingest
+### Engineering teams
+
+Teams can query historical reasoning before modifying old code.
 
 ```bash
-avos connect org/repo
-avos ingest org/repo --since 90d
+avos ask "What constraints shaped the auth module?"
 ```
 
-### 4. Ask a question
+### Autonomous workflows
+
+Agents coordinating on complex tasks can share persistent knowledge.
 
 ```bash
-avos ask "Why does the auth module use JWT instead of sessions?"
-```
-
-### 5. Review history before editing
-
-```bash
-avos history "payment retry logic"
-```
-
-### 6. Track a coding session
-
-```bash
-avos session-start "Fix retry backoff in payment worker"
-# ... do work ...
+avos session-start "Implement payment retry"
+# ... agent works ...
 avos session-end
+```
+
+### Onboarding
+
+New engineers or agents can understand the trajectory of the codebase.
+
+```bash
+avos ask "What is this subsystem responsible for?"
+avos session-ask "How was this retry flow implemented?"
 ```
 
 ---
 
-## Command reference
+## Command Reference
 
 | Command                                                 | What it does                                                    |
 | ------------------------------------------------------- | --------------------------------------------------------------- |
@@ -121,9 +174,9 @@ avos session-end
 | `avos session-ask "question"`                           | Search session memory for implementation context                |
 | `avos worktree-add <path> <branch> "goal" --agent name` | Create a git worktree with auto session start                   |
 | `avos worktree-init`                                    | Initialize avos in an existing git worktree                     |
-| `avos hook-install`                                     | Install pre-push hook for automatic commit sync                 |
+| `avos hook-install`                                     | Install pre-push hook (auto-installed on connect)               |
 
-### Global options
+### Global Options
 
 ```
 --json      Emit machine-readable JSON (for AI agents and automation)
@@ -133,7 +186,13 @@ avos session-end
 
 ---
 
-## JSON output for AI agents
+## Automatic Commit Sync
+
+When you connect a repository, avos automatically installs a **pre-push git hook** that syncs commits to Avos Memory on every `git push`. This keeps your team's memory up-to-date without manual `avos ingest` runs.
+
+---
+
+## JSON Output for AI Agents
 
 Every command supports `--json` for strict machine-readable output:
 
@@ -168,13 +227,11 @@ On error:
 }
 ```
 
-For `ask` and `history`, JSON output is produced by LLM converter agents (`avos_ask_agent_JSON_converter.md`, `avos_hisotry_agent_JSON_converter.md`) and requires the `REPLY_MODEL` environment variables.
-
-For all other commands, JSON output is deterministic (no LLM dependency).
+For `ask` and `history`, JSON output is produced by LLM converter agents and requires the `REPLY_MODEL` environment variables. For all other commands, JSON output is deterministic (no LLM dependency).
 
 ---
 
-## AI agent integration
+## AI Agent Integration
 
 Avos ships with built-in integration files for AI coding platforms.
 
@@ -195,31 +252,21 @@ Avos ships with built-in integration files for AI coding platforms.
 ```
 .claude/
 ├── CLAUDE.md                         # Project-level instructions
-├── commands/
-│   ├── avos-ask.md                   # /avos-ask slash command
-│   ├── avos-history.md               # /avos-history
-│   ├── avos-session-start.md         # /avos-session-start
-│   ├── avos-session-end.md           # /avos-session-end
-│   └── avos-ingest-pr.md             # /avos-ingest-pr
-├── agents/
-│   ├── avos-researcher.md            # Research context before code changes
-│   └── avos-session-manager.md       # Manage session lifecycle
-└── instincts/
-    └── avos-workflow.yaml            # Auto-trigger behaviors
+├── commands/                         # Slash commands
+├── agents/                           # Sub-agents for research/session management
+└── instincts/                        # Auto-trigger behaviors
 ```
 
-### OpenAI Codex / other platforms
+### Other Platforms
 
 ```
 .codex/instructions.md                # Community stub
 .agents/README.md                     # Integration guide for new platforms
 ```
 
-To add support for a new platform, follow the patterns in `.cursor/` and `.claude/`.
-
 ---
 
-## Recommended workflow
+## Recommended Workflow
 
 ### Before changing old code
 
@@ -228,17 +275,13 @@ avos ask "why does this function exist?"
 avos history "module-or-function-name"
 ```
 
-Understand constraints before editing.
-
 ### During a coding session
 
 ```bash
 avos session-start "Fix retry backoff in payment worker"
-# ... do work in Claude Code, Cursor, or terminal ...
+# ... do work ...
 avos session-end
 ```
-
-Creates a durable implementation trail.
 
 ### After pushing a PR
 
@@ -246,21 +289,9 @@ Creates a durable implementation trail.
 avos ingest-pr org/repo 456
 ```
 
-Ensures the PR context is available for future queries.
-
-### When a new engineer or agent joins
-
-```bash
-avos ask "what is this subsystem responsible for?"
-avos history "subsystem-name"
-avos session-ask "how was this retry flow implemented?"
-```
-
-Gives newcomers the trajectory of the codebase, not just the current snapshot.
-
 ---
 
-## Multi-agent parallel development
+## Multi-Agent Parallel Development
 
 Avos supports multiple agents working in parallel via git worktrees:
 
@@ -276,34 +307,20 @@ avos session-start --agent agentB "Build pagination"
 
 In a worktree, `--agent` is **required** to distinguish parallel sessions.
 
-| Context   | `--agent`    | When omitted                  |
-| --------- | ------------ | ----------------------------- |
-| Main repo | Optional     | Falls back to `git user.name` |
-| Worktree  | **Required** | Command blocks with error     |
-
 ---
 
 ## Architecture
 
 ```
 avos_cli/
-├── cli/main.py              # Typer CLI entry point, credential resolution
-├── commands/                 # Orchestrators (one per command)
-│   ├── connect.py            # Repository connection flow
-│   ├── ingest.py             # 4-stage bulk ingest (PRs, issues, commits, docs)
-│   ├── ingest_pr.py          # Single-PR ingest
-│   ├── ask.py                # Search + synthesize + ground + render
-│   ├── history.py            # Chronological search + synthesize + render
-│   ├── session_start.py      # Session lifecycle: create state, spawn watcher
-│   ├── session_end.py        # Stop watcher, build artifact, store, cleanup
-│   ├── session_status.py     # Read-only session state check
-│   └── session_ask.py        # Search session memory (Memory B)
-├── artifacts/                # Builders that produce canonical text for memory
-├── services/                 # Shared: Memory API, GitHub, LLM, citation validator
-├── agents/                   # LLM prompt templates for output formatting
-├── models/                   # Pydantic models (artifacts, config, query, API)
-├── config/                   # State files, hash store, lock manager
-└── utils/                    # Output formatting, logging, time helpers
+├── cli/main.py              # Typer CLI entry point
+├── commands/                # Orchestrators (one per command)
+├── artifacts/               # Builders that produce canonical text for memory
+├── services/                # Memory API, GitHub, LLM, citation validator
+├── agents/                  # LLM prompt templates for output formatting
+├── models/                  # Pydantic models
+├── config/                  # State files, hash store, lock manager
+└── utils/                   # Output formatting, logging
 ```
 
 **Design principles:**
@@ -311,122 +328,82 @@ avos_cli/
 - Each command is an independent orchestrator with constructor DI
 - Stateless CLI, stateful memory (via `memory_id`)
 - Graceful degradation: if LLM synthesis fails, fallback to evidence-backed raw output
-- All 4 LLM agents stay in the pipeline for `ask`/`history` JSON output
 
 ---
 
-## Output pipeline
+## Environment Variables
 
-Two categories of commands, two output strategies:
-
-**LLM-powered commands** (`ask`, `history`, `session-ask`):
-
-```
-Raw artifacts from Memory API
-  -> Formatter Agent (avos_ask_agent.md / avos_history_agent.md)
-  -> ANSWER/EVIDENCE or TIMELINE/SUMMARY text
-  -> if --json: JSON Converter Agent -> structured JSON
-  -> if no --json: Rich terminal UI (panels, tables)
-```
-
-**Non-LLM commands** (`connect`, `ingest`, `session-*`, `ingest-pr`):
-
-```
-Typed Python objects (counters, IDs, state)
-  -> if --json: deterministic dict -> json.dumps -> JSON envelope
-  -> if no --json: Rich terminal UI
-```
-
-When synthesis fails, the fallback path still routes through the formatter agents to produce clean evidence-backed output.
+| Variable              | Required for                     | Description                                              |
+| --------------------- | -------------------------------- | -------------------------------------------------------- |
+| `AVOS_API_KEY`        | All commands                     | Avos Memory API key from `https://avoslab.com/`          |
+| `AVOS_API_URL`        | All commands                     | API endpoint (default: `https://avosmemory.avoslab.com`) |
+| `GITHUB_TOKEN`        | `connect`, `ingest`, `ingest-pr` | GitHub personal access token                             |
+| `ANTHROPIC_API_KEY`   | `ask`, `history`, `session-ask`  | Anthropic API key for LLM synthesis                      |
+| `OPENAI_API_KEY`      | `ask`, `history`, `session-ask`  | Alternative: OpenAI API key                              |
+| `REPLY_MODEL`         | `--json` for `ask`/`history`     | Model identifier for output formatting                   |
+| `REPLY_MODEL_URL`     | `--json` for `ask`/`history`     | API endpoint for reply model                             |
+| `REPLY_MODEL_API_KEY` | `--json` for `ask`/`history`     | API key for reply model                                  |
 
 ---
 
 ## Development
 
-### Setup
-
 ```bash
 git clone https://github.com/Avos-Lab/avos-dev-cli.git
 cd avos-dev-cli
 pip install -e ".[dev]"
-```
 
-### Run tests
+# Run tests
+pytest
 
-```bash
-pytest                          # all unit tests
-pytest tests/unit/              # unit only
-pytest tests/contract/          # API contract tests
-pytest -x --tb=long             # stop on first failure, verbose
-```
-
-### Lint and type check
-
-```bash
+# Lint and type check
 ruff check avos_cli/
 mypy avos_cli/
-```
-
-### Project structure
-
-```
-tests/
-├── unit/                # Fast, isolated, no network
-│   ├── commands/        # One test file per orchestrator
-│   ├── services/        # Service-level tests
-│   └── config/          # Config/state tests
-├── contract/            # API boundary validation
-└── integration/         # End-to-end workflows
 ```
 
 Coverage target: 90%+ (enforced in CI).
 
 ---
 
-## Environment variables
-
-| Variable              | Required for                     | Description                                   |
-| --------------------- | -------------------------------- | --------------------------------------------- |
-| `AVOS_API_KEY`        | All commands                     | Avos Memory API key from `https://avoslab.com/` |
-| `AVOS_API_URL`        | All commands                     | API endpoint (default: `https://avosmemory.avoslab.com`) |
-| `GITHUB_TOKEN`        | `connect`, `ingest`, `ingest-pr` | GitHub personal access token                  |
-| `ANTHROPIC_API_KEY`   | `ask`, `history`, `session-ask`  | Anthropic API key for LLM synthesis           |
-| `OPENAI_API_KEY`      | `ask`, `history`, `session-ask`  | Alternative: OpenAI API key                   |
-| `REPLY_MODEL`         | `--json` for `ask`/`history`     | Model identifier for output formatting        |
-| `REPLY_MODEL_URL`     | `--json` for `ask`/`history`     | API endpoint for reply model                  |
-| `REPLY_MODEL_API_KEY` | `--json` for `ask`/`history`     | API key for reply model                       |
-
-To configure Avos credentials:
-
-1. Log in to `https://avoslab.com/`.
-2. Generate your `AVOS_API_KEY` from the AvosLab dashboard.
-3. Set `AVOS_API_URL` to `https://avosmemory.avoslab.com` (or use your tenant-specific endpoint if provided).
-4. For directory and setup details, see `https://avoslab.com/docs`.
-
----
-
-## Compliance and auditability
+## Compliance and Auditability
 
 Session memory preserves a searchable trail of who changed what, why, what tests were run, and what risks remained. This is useful for engineering reviews, internal accountability, and regulated environments.
 
-However: Avos is not itself a compliance certification. Session memory is **supporting evidence**, not a full compliance program. Your organization still needs its own access controls, retention policy, and control mappings.
+However: Avos is not itself a compliance certification. Session memory is **supporting evidence**, not a full compliance program.
+
+---
+
+## Why This Project Exists
+
+AI agents will become long-lived collaborators on codebases.
+
+But without memory, they cannot accumulate knowledge. They forget decisions, repeat mistakes, and lose context between sessions.
+
+Avos explores what persistent memory for autonomous agents should look like.
+
+---
+
+## Contributing
+
+We welcome contributions to the CLI, integrations, and developer workflows.
+
+Areas we're especially interested in:
+
+- New memory connectors
+- Retrieval algorithms
+- Agent integrations (Codex, OpenCode, etc.)
+- Developer tooling
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and PR process.
 
 ---
 
 ## Documentation
 
 - [User Guide](docs/user/README.md) — Command reference, troubleshooting
-- [Contributor Guide](CONTRIBUTING.md) — Setup, testing, code style, PR process
+- [Contributor Guide](CONTRIBUTING.md) — Setup, testing, code style
 - [Changelog](CHANGELOG.md) — Release history
 - [Agent Integration Guide](.agents/README.md) — Adding new platform integrations
-
----
-
-## Contributing
-
-We welcome contributions to the CLI, integrations, and developer workflows. Please open an issue or discussion with your use case and the workflow you want Avos to support.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and PR process.
 
 ---
 

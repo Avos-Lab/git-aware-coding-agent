@@ -307,6 +307,68 @@ class TestEdgeCases:
         assert code == 1
 
 
+class TestQuietMode:
+    """Tests for quiet mode (used by auto-install from connect)."""
+
+    def test_quiet_mode_installs_hook_returns_0(
+        self, orchestrator: HookInstallOrchestrator, git_repo: Path
+    ):
+        """Quiet mode should still install hook successfully."""
+        code = orchestrator.run(quiet=True)
+        assert code == 0
+        hook_path = git_repo / ".git" / "hooks" / "pre-push"
+        assert hook_path.exists()
+
+    def test_quiet_mode_suppresses_output(
+        self, orchestrator: HookInstallOrchestrator, capsys: pytest.CaptureFixture[str]
+    ):
+        """Quiet mode should not print anything on success."""
+        orchestrator.run(quiet=True)
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_quiet_mode_suppresses_error_output(
+        self, tmp_path: Path, mock_git_client: MagicMock, capsys: pytest.CaptureFixture[str]
+    ):
+        """Quiet mode should not print errors."""
+        repo = tmp_path / "no_config"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+
+        orch = HookInstallOrchestrator(git_client=mock_git_client, repo_root=repo)
+        code = orch.run(quiet=True)
+
+        assert code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_quiet_mode_existing_hook_returns_1_silently(
+        self, orchestrator: HookInstallOrchestrator, git_repo: Path, capsys: pytest.CaptureFixture[str]
+    ):
+        """Quiet mode should return 1 silently for existing non-avos hook."""
+        hook_path = git_repo / ".git" / "hooks" / "pre-push"
+        hook_path.write_text("#!/bin/sh\necho 'custom'\n")
+
+        code = orchestrator.run(quiet=True)
+        assert code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_quiet_mode_avos_hook_exists_returns_0_silently(
+        self, orchestrator: HookInstallOrchestrator, git_repo: Path, capsys: pytest.CaptureFixture[str]
+    ):
+        """Quiet mode should return 0 silently when avos hook already exists."""
+        hook_path = git_repo / ".git" / "hooks" / "pre-push"
+        hook_path.write_text(_PRE_PUSH_HOOK_SCRIPT)
+
+        code = orchestrator.run(quiet=True)
+        assert code == 0
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+
 class TestAdditionalCoverageBranches:
     """Additional branch coverage for install/uninstall paths."""
 
