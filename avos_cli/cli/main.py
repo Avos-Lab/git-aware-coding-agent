@@ -36,7 +36,7 @@ if (_avos_home / ".env").exists():
 app = typer.Typer(
     name="avos",
     help="Developer memory CLI for repositories.",
-    no_args_is_help=True,
+    no_args_is_help=False,
     add_completion=False,
 )
 
@@ -68,7 +68,7 @@ def _make_reply_service() -> ReplyOutputService | None:
     return None
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
     version: bool | None = typer.Option(
@@ -91,6 +91,10 @@ def main(
     ),
 ) -> None:
     """AVOS CLI - Developer memory for repositories."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit(0)
+
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["json"] = json_output
