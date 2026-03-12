@@ -3,10 +3,10 @@
 **Git history for AI agents.**
 
 <p align="center">
-  <video src="docs/assets/avos-dev-cli.mp4" controls width="100%"></video>
+  <img src="docs/assets/avos-dev-cli.gif" alt="Avos CLI demo" width="100%" />
 </p>
 
-**Demo video:** [docs/assets/avos-dev-cli.mp4](docs/assets/avos-dev-cli.mp4)
+**Demo:** [docs/assets/avos-dev-cli.gif](docs/assets/avos-dev-cli.gif)
 
 Avos gives AI coding agents persistent, queryable memory so they can remember **why code exists**, **what decisions shaped it**, and **how it was built** — before they modify it.
 
