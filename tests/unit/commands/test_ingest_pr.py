@@ -10,8 +10,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from avos_cli.commands.ingest_pr import IngestPROrchestrator
 from avos_cli.exceptions import ResourceNotFoundError, UpstreamUnavailableError
 from avos_cli.models.api import NoteResponse

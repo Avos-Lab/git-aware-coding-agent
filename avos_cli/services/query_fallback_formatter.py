@@ -82,7 +82,10 @@ class QueryFallbackFormatter:
         if not artifacts:
             return f"{header}\n\nNo matching evidence found."
 
-        sorted_arts = self._chrono.sort(artifacts)  # type: ignore[arg-type]
+        sorted_arts = sorted(
+            artifacts,
+            key=lambda art: (art.created_at if art.created_at else _EPOCH, art.note_id),
+        )
 
         lines = [header, ""]
         for art in sorted_arts:

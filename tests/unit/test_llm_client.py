@@ -8,7 +8,7 @@ timeout handling, and hostile edge cases. All tests use mocked HTTP.
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -150,9 +150,11 @@ class TestResponseParsing:
             json=empty_response,
             request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
         )
-        with patch.object(client._client, "post", return_value=mock_response):
-            with pytest.raises(LLMSynthesisError):
-                client.synthesize(request)
+        with (
+            patch.object(client._client, "post", return_value=mock_response),
+            pytest.raises(LLMSynthesisError),
+        ):
+            client.synthesize(request)
 
 
 class TestFailureClassification:

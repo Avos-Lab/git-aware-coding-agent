@@ -14,9 +14,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from avos_cli.commands.hook_install import (
+    _PRE_PUSH_HOOK_SCRIPT,
     HookInstallOrchestrator,
     HookUninstallOrchestrator,
-    _PRE_PUSH_HOOK_SCRIPT,
 )
 
 
@@ -114,7 +114,7 @@ class TestExistingHookHandling:
         """If avos hook exists, return success without rewriting."""
         hook_path = git_repo / ".git" / "hooks" / "pre-push"
         hook_path.write_text(_PRE_PUSH_HOOK_SCRIPT)
-        
+
         code = orchestrator.run()
         assert code == 0
 
@@ -124,7 +124,7 @@ class TestExistingHookHandling:
         """Non-avos hook should not be overwritten without --force."""
         hook_path = git_repo / ".git" / "hooks" / "pre-push"
         hook_path.write_text("#!/bin/sh\necho 'custom hook'\n")
-        
+
         code = orchestrator.run()
         assert code == 1
 
@@ -134,7 +134,7 @@ class TestExistingHookHandling:
         """--force should overwrite existing non-avos hook."""
         hook_path = git_repo / ".git" / "hooks" / "pre-push"
         hook_path.write_text("#!/bin/sh\necho 'custom hook'\n")
-        
+
         code = orchestrator.run(force=True)
         assert code == 0
         assert "avos hook-sync" in hook_path.read_text()
@@ -145,7 +145,7 @@ class TestExistingHookHandling:
         """--force should also work on existing avos hook (reinstall)."""
         hook_path = git_repo / ".git" / "hooks" / "pre-push"
         hook_path.write_text("#!/bin/sh\n# old avos hook-sync version\n")
-        
+
         code = orchestrator.run(force=True)
         assert code == 0
 
@@ -159,7 +159,7 @@ class TestNoConfig:
         repo.mkdir()
         (repo / ".git").mkdir()
         (repo / ".git" / "hooks").mkdir()
-        
+
         orch = HookInstallOrchestrator(
             git_client=mock_git_client,
             repo_root=repo,
@@ -177,24 +177,24 @@ class TestWorktreeSupport:
         main_repo.mkdir()
         main_git = main_repo / ".git"
         main_git.mkdir()
-        
+
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         worktree_gitdir = main_git / "worktrees" / "worktree"
         worktree_gitdir.mkdir(parents=True)
         (worktree_gitdir / "hooks").mkdir()
-        
+
         (worktree / ".git").write_text(f"gitdir: {worktree_gitdir}")
-        
+
         avos = worktree / ".avos"
         _make_config_json(avos)
-        
+
         orch = HookInstallOrchestrator(
             git_client=mock_git_client,
             repo_root=worktree,
         )
         code = orch.run()
-        
+
         assert code == 0
         hook_path = worktree_gitdir / "hooks" / "pre-push"
         assert hook_path.exists()
@@ -208,10 +208,10 @@ class TestHookUninstall:
         """Should remove avos-installed hook."""
         hook_path = git_repo / ".git" / "hooks" / "pre-push"
         hook_path.write_text(_PRE_PUSH_HOOK_SCRIPT)
-        
+
         orch = HookUninstallOrchestrator(repo_root=git_repo)
         code = orch.run()
-        
+
         assert code == 0
         assert not hook_path.exists()
 
@@ -225,10 +225,10 @@ class TestHookUninstall:
         """Should not remove non-avos hook."""
         hook_path = git_repo / ".git" / "hooks" / "pre-push"
         hook_path.write_text("#!/bin/sh\necho 'custom'\n")
-        
+
         orch = HookUninstallOrchestrator(repo_root=git_repo)
         code = orch.run()
-        
+
         assert code == 1
         assert hook_path.exists()
 
@@ -259,16 +259,16 @@ class TestHooksDirCreation:
         repo.mkdir()
         git_dir = repo / ".git"
         git_dir.mkdir()
-        
+
         avos = repo / ".avos"
         _make_config_json(avos)
-        
+
         orch = HookInstallOrchestrator(
             git_client=mock_git_client,
             repo_root=repo,
         )
         code = orch.run()
-        
+
         assert code == 0
         assert (git_dir / "hooks" / "pre-push").exists()
 
@@ -282,7 +282,7 @@ class TestEdgeCases:
         repo.mkdir()
         avos = repo / ".avos"
         _make_config_json(avos)
-        
+
         orch = HookInstallOrchestrator(
             git_client=mock_git_client,
             repo_root=repo,
@@ -297,7 +297,7 @@ class TestEdgeCases:
         (repo / ".git").write_text("invalid content")
         avos = repo / ".avos"
         _make_config_json(avos)
-        
+
         orch = HookInstallOrchestrator(
             git_client=mock_git_client,
             repo_root=repo,

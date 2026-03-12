@@ -7,8 +7,6 @@ determinism, and edge cases.
 
 from __future__ import annotations
 
-import pytest
-
 from avos_cli.models.query import RetrievedArtifact, SanitizedArtifact
 from avos_cli.services.sanitization_service import SanitizationService
 

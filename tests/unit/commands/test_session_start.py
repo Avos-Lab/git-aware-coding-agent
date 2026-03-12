@@ -8,15 +8,10 @@ from __future__ import annotations
 
 import json
 import os
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from avos_cli.commands.session_start import SessionStartOrchestrator
-from avos_cli.exceptions import ConfigurationNotInitializedError
 
 
 def _make_config_json(

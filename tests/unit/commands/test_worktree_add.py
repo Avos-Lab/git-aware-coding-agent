@@ -37,7 +37,6 @@ import pytest
 from avos_cli.exceptions import RepositoryContextError, ServiceParseError
 from avos_cli.services.git_client import GitClient
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

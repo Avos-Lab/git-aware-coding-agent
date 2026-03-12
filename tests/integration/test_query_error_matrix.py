@@ -20,7 +20,6 @@ from avos_cli.exceptions import (
     ResourceNotFoundError,
     UpstreamUnavailableError,
 )
-from avos_cli.models.api import SearchResult
 
 
 def _mock_config_ask():

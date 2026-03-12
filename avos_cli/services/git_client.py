@@ -145,10 +145,7 @@ class GitClient:
         if not new_sha:
             return []
 
-        if old_sha:
-            range_spec = f"{old_sha}..{new_sha}"
-        else:
-            range_spec = new_sha
+        range_spec = f"{old_sha}..{new_sha}" if old_sha else new_sha
 
         args = ["log", "--format=%H|%s|%an|%aI", range_spec]
         output = self._run_git(args, repo_path)

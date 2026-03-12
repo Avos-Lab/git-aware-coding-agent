@@ -83,7 +83,11 @@ def print_info(message: str) -> None:
         print(message)
 
 
-def print_json(success: bool, data: dict | None = None, error: dict | None = None) -> None:
+def print_json(
+    success: bool,
+    data: dict[str, object] | None = None,
+    error: dict[str, object] | None = None,
+) -> None:
     """Emit strict JSON envelope for machine-readable output.
 
     Per Q13: envelope is {"success": bool, "data": {...}, "error": {...}}.

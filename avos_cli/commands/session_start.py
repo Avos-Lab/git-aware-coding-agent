@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 import unicodedata
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,7 +29,12 @@ from avos_cli.exceptions import AvosError, ConfigurationNotInitializedError
 from avos_cli.services.git_client import GitClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_json, print_success, print_warning, render_kv_panel
+from avos_cli.utils.output import (
+    print_error,
+    print_json,
+    print_warning,
+    render_kv_panel,
+)
 
 _log = get_logger("commands.session_start")
 
@@ -102,9 +108,8 @@ class SessionStartOrchestrator:
                 hint="Run 'avos session-end' first.",
             )
             return 1
-        if guard_result == "cleaned":
-            if not json_output:
-                print_warning("Cleaned stale session state. Starting fresh.")
+        if guard_result == "cleaned" and not json_output:
+            print_warning("Cleaned stale session state. Starting fresh.")
 
         sanitized_goal = self._sanitize_goal(goal)
         session_id = f"sess_{secrets.token_hex(8)}"
@@ -207,7 +212,15 @@ class SessionStartOrchestrator:
         pid_data = read_json_safe(pid_path)
 
         if pid_data is not None:
-            pid = int(pid_data.get("pid", -1))
+            raw_pid = pid_data.get("pid", -1)
+            pid = -1
+            if isinstance(raw_pid, int):
+                pid = raw_pid
+            elif isinstance(raw_pid, str):
+                try:
+                    pid = int(raw_pid)
+                except ValueError:
+                    pid = -1
             if pid > 0 and self._pid_alive(pid):
                 return "blocked"
 
@@ -272,10 +285,8 @@ class SessionStartOrchestrator:
         for filename in ("session.json", "watcher.pid"):
             path = self._avos_dir / filename
             if path.exists():
-                try:
+                with suppress(OSError):
                     path.unlink()
-                except OSError:
-                    pass
 
     @staticmethod
     def _pid_alive(pid: int) -> bool:

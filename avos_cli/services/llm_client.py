@@ -8,7 +8,7 @@ failure classification.
 
 from __future__ import annotations
 
-import json
+from typing import Any
 
 import httpx
 
@@ -194,7 +194,7 @@ class LLMClient:
             )
         return "\n\n".join(blocks)
 
-    def _parse_response(self, data: dict, provider: str) -> SynthesisResponse:
+    def _parse_response(self, data: dict[str, Any], provider: str) -> SynthesisResponse:
         """Parse LLM API response into SynthesisResponse.
 
         Anthropic: content[].type=text, text. OpenAI: choices[0].message.content.

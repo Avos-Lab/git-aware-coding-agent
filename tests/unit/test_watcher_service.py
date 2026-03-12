@@ -7,15 +7,10 @@ backend adapter fallback, aggregation reset, and security controls.
 from __future__ import annotations
 
 import json
-import os
-import signal
 import threading
 import time
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from avos_cli.services.watcher import (
     _detect_test_commands,

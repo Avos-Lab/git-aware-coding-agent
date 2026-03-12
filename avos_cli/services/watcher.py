@@ -19,9 +19,7 @@ from __future__ import annotations
 
 import json
 import signal
-import sys
 import threading
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -32,9 +30,9 @@ from avos_cli.utils.logger import get_logger
 _log = get_logger("services.watcher")
 
 try:
-    import psutil
+    import psutil  # type: ignore[import-untyped]
 except ImportError:
-    psutil = None  # type: ignore[assignment]
+    psutil = None
 
 _TEST_CMD_PATTERNS = frozenset({
     "pytest", "python -m pytest", "unittest", "python -m unittest",

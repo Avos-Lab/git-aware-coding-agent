@@ -12,10 +12,10 @@ Exit codes:
 
 from __future__ import annotations
 
-import json
 import os
 import signal
 import time
+from contextlib import suppress
 from pathlib import Path
 
 from avos_cli.artifacts.session_builder import SessionBuilder
@@ -29,11 +29,11 @@ from avos_cli.exceptions import (
 from avos_cli.models.artifacts import SessionArtifact
 from avos_cli.models.config import SessionCheckpoint
 from avos_cli.services.git_client import GitClient
+from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.services.watcher import parse_checkpoints
 from avos_cli.utils.logger import get_logger
 from avos_cli.utils.output import (
     print_error,
-    print_info,
     print_json,
     print_success,
     print_warning,
@@ -61,7 +61,7 @@ class SessionEndOrchestrator:
 
     def __init__(
         self,
-        memory_client: object,
+        memory_client: AvosMemoryClient,
         llm_client: object | None,
         git_client: GitClient,
         repo_root: Path,
@@ -210,7 +210,15 @@ class SessionEndOrchestrator:
             print_warning("WATCHER_DEAD: No PID file found. Continuing with available data.")
             return
 
-        pid = int(pid_data.get("pid", -1))
+        raw_pid = pid_data.get("pid", -1)
+        pid = -1
+        if isinstance(raw_pid, int):
+            pid = raw_pid
+        elif isinstance(raw_pid, str):
+            try:
+                pid = int(raw_pid)
+            except ValueError:
+                pid = -1
         pid_session_id = str(pid_data.get("session_id", ""))
 
         if pid <= 0:
@@ -335,10 +343,8 @@ class SessionEndOrchestrator:
         """Remove only the PID file (used on store failure)."""
         pid_path = self._avos_dir / "watcher.pid"
         if pid_path.exists():
-            try:
+            with suppress(OSError):
                 pid_path.unlink()
-            except OSError:
-                pass
 
     def _print_summary(
         self,

@@ -23,7 +23,6 @@ from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.utils.logger import get_logger
 from avos_cli.utils.output import (
     print_error,
-    print_info,
     print_warning,
     render_kv_panel,
 )

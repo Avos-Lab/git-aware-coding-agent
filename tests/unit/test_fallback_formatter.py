@@ -7,8 +7,6 @@ and edge cases.
 
 from __future__ import annotations
 
-import pytest
-
 from avos_cli.models.query import FallbackReason, SanitizedArtifact
 from avos_cli.services.query_fallback_formatter import QueryFallbackFormatter
 

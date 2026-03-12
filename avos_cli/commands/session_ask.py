@@ -28,9 +28,9 @@ from avos_cli.services.llm_client import LLMClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.services.query_fallback_formatter import QueryFallbackFormatter
 from avos_cli.services.reply_output_service import (
+    ReplyOutputService,
     dumb_format_ask,
     parse_ask_response,
-    ReplyOutputService,
 )
 from avos_cli.services.sanitization_service import SanitizationService
 from avos_cli.utils.logger import get_logger
@@ -69,7 +69,9 @@ def _render_reply_output(
     """Render session-ask output via reply layer or raw. Used for both success and fallback paths."""
     if reply_service:
         if json_output:
-            json_str = reply_service.format_ask_json(question, raw_output)
+            decorated = reply_service.format_ask(question, raw_output)
+            output = decorated if decorated else dumb_format_ask(raw_output)
+            json_str = reply_service.format_ask_json(output)
             if json_str:
                 print(json_str)
             else:

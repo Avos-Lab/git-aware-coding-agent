@@ -84,7 +84,7 @@ class SessionStatusOrchestrator:
         session_data = read_json_safe(session_path)
 
         if session_data is None:
-            result = {
+            result: dict[str, object] = {
                 "active": False,
                 "session_id": None,
                 "goal": None,
@@ -108,7 +108,15 @@ class SessionStatusOrchestrator:
         pid_data = read_json_safe(pid_path)
         watcher_alive = False
         if pid_data is not None:
-            pid = int(pid_data.get("pid", -1))
+            raw_pid = pid_data.get("pid", -1)
+            pid = -1
+            if isinstance(raw_pid, int):
+                pid = raw_pid
+            elif isinstance(raw_pid, str):
+                try:
+                    pid = int(raw_pid)
+                except ValueError:
+                    pid = -1
             if pid > 0:
                 watcher_alive = self._pid_alive(pid)
 

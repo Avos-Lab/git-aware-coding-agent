@@ -10,8 +10,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from avos_cli.commands.session_ask import SessionAskOrchestrator
 from avos_cli.exceptions import ConfigurationNotInitializedError
 from avos_cli.models.api import SearchHit, SearchResult

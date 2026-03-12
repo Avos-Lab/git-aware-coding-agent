@@ -9,12 +9,8 @@ from __future__ import annotations
 
 import json
 import os
-import signal
-from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from avos_cli.commands.session_end import SessionEndOrchestrator
 
@@ -96,7 +92,7 @@ class TestHappyPath:
 
         orchestrator = _make_orchestrator(repo_root)
 
-        with patch.object(orchestrator, "_stop_watcher") as mock_stop:
+        with patch.object(orchestrator, "_stop_watcher"):
             code = orchestrator.run()
 
         assert code == 0

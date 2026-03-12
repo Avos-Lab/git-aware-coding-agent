@@ -33,7 +33,7 @@ from avos_cli.models.artifacts import CommitArtifact
 from avos_cli.services.git_client import GitClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.utils.logger import get_logger
-from avos_cli.utils.output import print_error, print_info, print_success
+from avos_cli.utils.output import print_info, print_success
 
 _log = get_logger("commands.hook_sync")
 

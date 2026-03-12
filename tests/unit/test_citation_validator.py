@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from avos_cli.models.query import GroundingStatus, ReferenceType, SanitizedArtifact
 from avos_cli.services.citation_validator import CitationValidator
 
@@ -31,7 +29,7 @@ class TestStructuredExtraction:
             "answer": "Auth uses JWT.",
             "citations": [{"note_id": "abc"}, {"note_id": "def"}],
         })
-        grounded, dropped, warnings = svc.validate(response_text, artifacts)
+        grounded, _, _ = svc.validate(response_text, artifacts)
         assert len(grounded) == 2
         assert all(c.grounding_status == GroundingStatus.GROUNDED for c in grounded)
 
@@ -42,7 +40,7 @@ class TestStructuredExtraction:
             "answer": "text",
             "citations": [{"note_id": "abc", "display_label": "PR #101"}],
         })
-        grounded, dropped, warnings = svc.validate(response_text, artifacts)
+        grounded, _, _ = svc.validate(response_text, artifacts)
         assert grounded[0].display_label == "PR #101"
 
 
@@ -53,14 +51,14 @@ class TestInlineExtraction:
         svc = CitationValidator()
         artifacts = [_make_sanitized("abc-123"), _make_sanitized("def-456")]
         response_text = "Auth uses JWT [abc-123] and tokens [def-456]."
-        grounded, dropped, warnings = svc.validate(response_text, artifacts)
+        grounded, _, _ = svc.validate(response_text, artifacts)
         assert len(grounded) == 2
 
     def test_inline_with_ungrounded(self):
         svc = CitationValidator()
         artifacts = [_make_sanitized("abc-123")]
         response_text = "Auth uses JWT [abc-123] and [nonexistent]."
-        grounded, dropped, warnings = svc.validate(response_text, artifacts)
+        grounded, dropped, _ = svc.validate(response_text, artifacts)
         assert len(grounded) == 1
         assert len(dropped) == 1
         assert dropped[0].grounding_status == GroundingStatus.DROPPED_UNVERIFIABLE
@@ -97,7 +95,7 @@ class TestGroundingRules:
             "answer": "text",
             "citations": [{"note_id": "abc-123"}],
         })
-        grounded, dropped, _ = svc.validate(response_text, artifacts)
+        grounded, _, _ = svc.validate(response_text, artifacts)
         assert len(grounded) == 0
 
     def test_duplicate_citations_deduplicated(self):
@@ -131,7 +129,7 @@ class TestMinimumThreshold:
             "answer": "text",
             "citations": [{"note_id": "a"}],
         })
-        grounded, _, warnings = svc.validate(response_text, artifacts)
+        grounded, _, _ = svc.validate(response_text, artifacts)
         assert len(grounded) == 1
         # Caller checks len(grounded) < 2 for fallback decision
 
@@ -178,14 +176,14 @@ class TestEdgeCases:
     def test_empty_response_text(self):
         svc = CitationValidator()
         artifacts = [_make_sanitized("a")]
-        grounded, dropped, warnings = svc.validate("", artifacts)
+        grounded, _, _ = svc.validate("", artifacts)
         assert len(grounded) == 0
 
     def test_no_citations_in_response(self):
         svc = CitationValidator()
         artifacts = [_make_sanitized("a")]
         response_text = "Just a plain answer with no references."
-        grounded, dropped, warnings = svc.validate(response_text, artifacts)
+        grounded, _, _ = svc.validate(response_text, artifacts)
         assert len(grounded) == 0
 
     def test_malformed_json(self):

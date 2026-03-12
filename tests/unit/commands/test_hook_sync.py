@@ -112,7 +112,7 @@ class TestHappyPath:
         orchestrator.run("old_sha", "new_sha")
         call_args = mock_memory_client.add_memory.call_args_list[0]
         content = call_args.kwargs.get("content") or call_args[1].get("content")
-        
+
         assert "[type: commit]" in content
         assert "[repo: myorg/myrepo]" in content
         assert "[hash: abc123def456]" in content
@@ -144,7 +144,7 @@ class TestDeduplication:
         """Second run should skip all commits."""
         hash_store1 = IngestHashStore(git_repo / ".avos")
         hash_store1.load()
-        
+
         orch1 = HookSyncOrchestrator(
             memory_client=mock_memory_client,
             git_client=mock_git_client,
@@ -152,11 +152,11 @@ class TestDeduplication:
             repo_root=git_repo,
         )
         orch1.run("old", "new")
-        
+
         mock_memory_client.reset_mock()
         hash_store2 = IngestHashStore(git_repo / ".avos")
         hash_store2.load()
-        
+
         orch2 = HookSyncOrchestrator(
             memory_client=mock_memory_client,
             git_client=mock_git_client,
@@ -164,7 +164,7 @@ class TestDeduplication:
             repo_root=git_repo,
         )
         orch2.run("old", "new")
-        
+
         assert mock_memory_client.add_memory.call_count == 0
 
     def test_partial_dedup_new_commits_only(
@@ -176,7 +176,7 @@ class TestDeduplication:
         """Only new commits are synced when some already exist."""
         hash_store = IngestHashStore(git_repo / ".avos")
         hash_store.load()
-        
+
         orch = HookSyncOrchestrator(
             memory_client=mock_memory_client,
             git_client=mock_git_client,
@@ -184,13 +184,13 @@ class TestDeduplication:
             repo_root=git_repo,
         )
         orch.run("old", "new")
-        
+
         mock_memory_client.reset_mock()
         mock_git_client.commit_log_range.return_value = [
             {"hash": "abc123def456", "message": "feat: add login", "author": "dev", "date": "2026-03-01T10:00:00Z"},
             {"hash": "new_commit_xyz", "message": "new: feature", "author": "dev", "date": "2026-03-02T10:00:00Z"},
         ]
-        
+
         hash_store2 = IngestHashStore(git_repo / ".avos")
         hash_store2.load()
         orch2 = HookSyncOrchestrator(
@@ -200,7 +200,7 @@ class TestDeduplication:
             repo_root=git_repo,
         )
         orch2.run("old", "new")
-        
+
         assert mock_memory_client.add_memory.call_count == 1
 
 
@@ -213,7 +213,7 @@ class TestNullShaHandling:
         """Null SHA (40 zeros) should be treated as empty string."""
         null_sha = "0" * 40
         orchestrator.run(null_sha, "new_sha_456")
-        
+
         call_args = mock_git_client.commit_log_range.call_args
         old_sha_arg = call_args[0][1] if len(call_args[0]) > 1 else call_args.kwargs.get("old_sha")
         assert old_sha_arg == ""
@@ -224,7 +224,7 @@ class TestNullShaHandling:
         """Null new SHA (branch delete) should skip sync."""
         null_sha = "0" * 40
         code = orchestrator.run("old_sha", null_sha)
-        
+
         assert code == 0
         mock_git_client.commit_log_range.assert_not_called()
 
@@ -245,10 +245,10 @@ class TestNoConfig:
         repo.mkdir()
         (repo / ".git").mkdir()
         (repo / ".avos").mkdir()
-        
+
         hash_store = IngestHashStore(repo / ".avos")
         hash_store.load()
-        
+
         orch = HookSyncOrchestrator(
             memory_client=mock_memory_client,
             git_client=mock_git_client,
@@ -256,7 +256,7 @@ class TestNoConfig:
             repo_root=repo,
         )
         code = orch.run("old", "new")
-        
+
         assert code == 0
         mock_memory_client.add_memory.assert_not_called()
 
@@ -269,7 +269,7 @@ class TestEmptyCommitRange:
     ):
         mock_git_client.commit_log_range.return_value = []
         code = orchestrator.run("old", "new")
-        
+
         assert code == 0
         mock_memory_client.add_memory.assert_not_called()
 
@@ -290,16 +290,16 @@ class TestErrorHandling:
     ):
         """Memory errors on one commit should not stop others."""
         call_count = [0]
-        
+
         def fail_first(**kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 raise Exception("Network error")
             return NoteResponse(note_id="ok", content="ok", created_at="2026-03-06T00:00:00Z")
-        
+
         mock_memory_client.add_memory.side_effect = fail_first
         code = orchestrator.run("old", "new")
-        
+
         assert code == 0
         assert mock_memory_client.add_memory.call_count == 2
 

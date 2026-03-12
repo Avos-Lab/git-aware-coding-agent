@@ -7,8 +7,6 @@ and hostile edge cases.
 
 from __future__ import annotations
 
-import pytest
-
 from avos_cli.models.query import SanitizedArtifact
 from avos_cli.services.context_budget_service import ContextBudgetService
 

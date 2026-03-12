@@ -27,7 +27,6 @@ from avos_cli.utils.output import (
     print_error,
     print_info,
     print_json,
-    print_success,
     render_kv_panel,
 )
 

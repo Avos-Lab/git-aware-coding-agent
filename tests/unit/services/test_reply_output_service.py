@@ -6,10 +6,7 @@ with mocked HTTP.
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from avos_cli.services.reply_output_service import (
     ReplyOutputService,

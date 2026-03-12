@@ -7,8 +7,6 @@ timestamps, and 3-run repeatability.
 
 from __future__ import annotations
 
-import pytest
-
 from avos_cli.models.query import RetrievedArtifact
 from avos_cli.services.chronology_service import ChronologyService
 

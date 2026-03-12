@@ -11,8 +11,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from avos_cli.commands.history import HistoryOrchestrator
 from avos_cli.exceptions import (
     AuthError,

@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 from dotenv import load_dotenv
 
 from avos_cli import __version__
 from avos_cli.utils.output import print_error
+
+if TYPE_CHECKING:
+    from avos_cli.services.reply_output_service import ReplyOutputService
 
 # Load environment variables: cwd first, then package root (editable install),
 # then ~/.avos/.env. Later loads do not override existing vars.
@@ -53,7 +57,7 @@ def _first_env(*keys: str) -> str:
     return ""
 
 
-def _make_reply_service() -> object | None:
+def _make_reply_service() -> ReplyOutputService | None:
     """Build ReplyOutputService from env if REPLY_MODEL, REPLY_MODEL_URL, REPLY_MODEL_API_KEY are set."""
     model = _first_env("REPLY_MODEL", "reply_model")
     url = _first_env("REPLY_MODEL_URL", "reply_model_URL", "reply_model_url")
@@ -279,9 +283,9 @@ def ask(
 
     try:
         config = load_config(repo_root)
-    except ConfigurationNotInitializedError:
+    except ConfigurationNotInitializedError as e:
         print_error("[AUTH_ERROR] Repository not connected. Run 'avos connect org/repo' first.")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     provider = config.llm.provider.lower()
     if provider == "openai":
@@ -340,9 +344,9 @@ def session_ask(
 
     try:
         config = load_config(repo_root)
-    except ConfigurationNotInitializedError:
+    except ConfigurationNotInitializedError as e:
         print_error("[AUTH_ERROR] Repository not connected. Run 'avos connect org/repo' first.")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     provider = config.llm.provider.lower()
     if provider == "openai":
@@ -399,9 +403,9 @@ def history(
 
     try:
         config = load_config(repo_root)
-    except ConfigurationNotInitializedError:
+    except ConfigurationNotInitializedError as e:
         print_error("[AUTH_ERROR] Repository not connected. Run 'avos connect org/repo' first.")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     provider = config.llm.provider.lower()
     if provider == "openai":
