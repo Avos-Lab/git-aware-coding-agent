@@ -16,10 +16,11 @@ from avos_cli.exceptions import (
     AuthError,
     ConfigurationNotInitializedError,
     LLMSynthesisError,
+    RepositoryContextError,
     UpstreamUnavailableError,
 )
 from avos_cli.models.api import SearchHit, SearchResult
-from avos_cli.models.query import SynthesisResponse
+from avos_cli.models.query import SanitizedArtifact, SynthesisResponse
 
 
 def _make_search_result(count: int = 5) -> SearchResult:
@@ -226,3 +227,92 @@ class TestJsonOutputMode:
         out = captured.out
         assert '"success": false' in out or '"success":false' in out
         assert "REPLY_SERVICE_UNAVAILABLE" in out
+
+
+class TestAdditionalCoverageBranches:
+    """Targeted branch tests for CI coverage gate."""
+
+    def test_config_avos_error_json_mode_returns_one(self, capsys):
+        orch = _make_orchestrator()
+        with patch(
+            "avos_cli.commands.history.load_config",
+            side_effect=RepositoryContextError("repo context failed"),
+        ):
+            code = orch.run("org/repo", "subject", json_output=True)
+        assert code == 1
+        out = capsys.readouterr().out
+        assert "REPOSITORY_CONTEXT_ERROR" in out
+
+    def test_config_avos_error_human_mode_returns_one(self, capsys):
+        orch = _make_orchestrator()
+        with patch(
+            "avos_cli.commands.history.load_config",
+            side_effect=RepositoryContextError("repo context failed"),
+        ):
+            code = orch.run("org/repo", "subject", json_output=False)
+        assert code == 1
+
+    def test_memory_search_error_json_mode_returns_two(self, capsys):
+        mc = MagicMock()
+        mc.search.side_effect = AuthError("unauthorized", service="Avos Memory")
+        orch = _make_orchestrator(memory_client=mc)
+        with patch("avos_cli.commands.history.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "subject", json_output=True)
+        assert code == 2
+        out = capsys.readouterr().out
+        assert "AUTH_ERROR" in out
+
+    def test_sanitization_safety_block_fallback_branch(self):
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result(2)
+        orch = _make_orchestrator(memory_client=mc, llm_client=MagicMock())
+        orch._sanitizer.sanitize = MagicMock(
+            return_value=MagicMock(
+                confidence_score=10,
+                artifacts=[
+                    SanitizedArtifact(
+                        note_id="n1",
+                        content="safe",
+                        created_at="2026-01-01T00:00:00Z",
+                        rank=1,
+                    )
+                ],
+            )
+        )
+        with patch("avos_cli.commands.history.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "subject")
+        assert code == 0
+
+    def test_budget_exhausted_fallback_branch(self):
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result(2)
+        orch = _make_orchestrator(memory_client=mc, llm_client=MagicMock())
+        orch._sanitizer.sanitize = MagicMock(
+            return_value=MagicMock(
+                confidence_score=100,
+                artifacts=[
+                    SanitizedArtifact(
+                        note_id="n1",
+                        content="safe",
+                        created_at="2026-01-01T00:00:00Z",
+                        rank=1,
+                    )
+                ],
+            )
+        )
+        orch._budget.pack = MagicMock(return_value=MagicMock(included_count=1, included=[]))
+        with patch("avos_cli.commands.history.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "subject")
+        assert code == 0

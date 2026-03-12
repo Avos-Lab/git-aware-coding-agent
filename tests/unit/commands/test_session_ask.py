@@ -11,9 +11,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from avos_cli.commands.session_ask import SessionAskOrchestrator
-from avos_cli.exceptions import ConfigurationNotInitializedError
+from avos_cli.exceptions import (
+    AuthError,
+    ConfigurationNotInitializedError,
+    LLMSynthesisError,
+    RepositoryContextError,
+)
 from avos_cli.models.api import SearchHit, SearchResult
-from avos_cli.models.query import SynthesisResponse
+from avos_cli.models.query import SanitizedArtifact, SynthesisResponse
 
 
 def _make_search_result(count: int = 3) -> SearchResult:
@@ -130,3 +135,89 @@ class TestPreconditionFailures:
             mock_cfg.side_effect = ConfigurationNotInitializedError()
             code = orch.run("org/repo", "question")
         assert code == 1
+
+
+class TestAdditionalCoverageBranches:
+    """Additional targeted branch tests for session-ask coverage."""
+
+    def test_config_avos_error_json_mode_returns_one(self, capsys):
+        orch = _make_orchestrator()
+        with patch(
+            "avos_cli.commands.session_ask.load_config",
+            side_effect=RepositoryContextError("repo context failed"),
+        ):
+            code = orch.run("org/repo", "question", json_output=True)
+        assert code == 1
+        out = capsys.readouterr().out
+        assert "REPOSITORY_CONTEXT_ERROR" in out
+
+    def test_memory_search_error_json_mode_returns_two(self, capsys):
+        mc = MagicMock()
+        mc.search.side_effect = AuthError("unauthorized", service="Avos Memory")
+        orch = _make_orchestrator(memory_client=mc)
+        with patch("avos_cli.commands.session_ask.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                memory_id_session="repo:org/repo-session",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "question", json_output=True)
+        assert code == 2
+        out = capsys.readouterr().out
+        assert "AUTH_ERROR" in out
+
+    def test_json_output_empty_results_branch(self, capsys):
+        mc = MagicMock()
+        mc.search.return_value = SearchResult(results=[], total_count=0)
+        orch = _make_orchestrator(memory_client=mc, llm_client=MagicMock())
+        with patch("avos_cli.commands.session_ask.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                memory_id_session="repo:org/repo-session",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "question", json_output=True)
+        assert code == 0
+        out = capsys.readouterr().out
+        assert '"success": true' in out or '"success":true' in out
+
+    def test_sanitization_safety_block_fallback_branch(self):
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result(2)
+        orch = _make_orchestrator(memory_client=mc, llm_client=MagicMock())
+        orch._sanitizer.sanitize = MagicMock(
+            return_value=MagicMock(
+                confidence_score=10,
+                artifacts=[
+                    SanitizedArtifact(
+                        note_id="n1",
+                        content="safe",
+                        created_at="2026-01-01T00:00:00Z",
+                        rank=1,
+                    )
+                ],
+            )
+        )
+        with patch("avos_cli.commands.session_ask.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                memory_id_session="repo:org/repo-session",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "question")
+        assert code == 0
+
+    def test_llm_failure_fallback_branch(self):
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result(2)
+        lc = MagicMock()
+        lc.synthesize.side_effect = LLMSynthesisError("timeout", failure_class="transient")
+        orch = _make_orchestrator(memory_client=mc, llm_client=lc)
+        with patch("avos_cli.commands.session_ask.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                memory_id_session="repo:org/repo-session",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "question")
+        assert code == 0

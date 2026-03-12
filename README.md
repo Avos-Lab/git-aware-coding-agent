@@ -1,8 +1,8 @@
-# Avos-CLI
+# Avos-dev-CLI
 
 **Portable memory for codebases, AI agents, and engineering teams.**
 
-Avos adds a memory layer on top of your repository so AI agents and humans can understand **what changed**, **why it changed**, and **how it was built** — before they modify existing code.
+Avos adds a memory layer on top of your repository so AI agents and humans can understand **what changed**, **why it changed**, and **how it was built** — before they modify existing code. And during the AI coding session, you can audit, which agent was doing during the session and this Session memory can be a **supporting evidence** for complience.
 
 ```
 connect -> ingest -> ask / history -> session-start -> code -> session-end
@@ -22,9 +22,9 @@ AI coding agents can read the current file tree, but that is not the same as kno
 - what happened in previous PRs
 - how a feature was implemented across a session
 
-That gap causes bad rewrites, repeated mistakes, and fragile changes.
+That gap causes bad rewrites, sudden refactorying, repeated mistakes, and fragile changes.
 
-Avos fixes it by attaching **portable memory** to a repository — two memory planes that persist across agents, sessions, and contributors.
+Avos fixes it by attaching **portable memory** to a repository with two memory planes that persist across agents, sessions, and contributors.
 
 ---
 
@@ -50,9 +50,17 @@ Together, these let you understand both the **history of the repository** and th
 
 ### 1. Install
 
-```bash
-pip install avos-cli
-```
+# Clone the GitHub repository
+
+git clone https://github.com/Avos-Lab/avos-dev-cli.git
+
+# Then install locally (adjust the path to where you cloned the repo)
+
+pip install -e /path/to/avos-dev-cli
+
+# Or, if published on PyPI, you can use:
+
+# pip install avos-dev-cli
 
 ### 2. Set environment variables
 

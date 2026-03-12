@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import stat
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -18,6 +18,7 @@ from avos_cli.commands.hook_install import (
     HookInstallOrchestrator,
     HookUninstallOrchestrator,
 )
+from avos_cli.exceptions import RepositoryContextError
 
 
 def _make_config_json(
@@ -304,3 +305,55 @@ class TestEdgeCases:
         )
         code = orch.run()
         assert code == 1
+
+
+class TestAdditionalCoverageBranches:
+    """Additional branch coverage for install/uninstall paths."""
+
+    def test_install_handles_avos_error_from_config(self, git_repo: Path, mock_git_client: MagicMock):
+        orch = HookInstallOrchestrator(git_client=mock_git_client, repo_root=git_repo)
+        with patch(
+            "avos_cli.commands.hook_install.load_config",
+            side_effect=RepositoryContextError("bad context"),
+        ):
+            code = orch.run()
+        assert code == 1
+
+    def test_install_handles_oserror_during_write(self, git_repo: Path, mock_git_client: MagicMock):
+        orch = HookInstallOrchestrator(git_client=mock_git_client, repo_root=git_repo)
+        with patch.object(orch, "_install_hook", side_effect=OSError("disk full")):
+            code = orch.run(force=True)
+        assert code == 1
+
+    def test_relative_gitdir_file_branch(self, tmp_path: Path, mock_git_client: MagicMock):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        gitdir = tmp_path / "realgit"
+        gitdir.mkdir()
+        (repo / ".git").write_text("gitdir: ../realgit")
+        _make_config_json(repo / ".avos")
+
+        orch = HookInstallOrchestrator(git_client=mock_git_client, repo_root=repo)
+        code = orch.run()
+        assert code == 0
+        assert (gitdir / "hooks" / "pre-push").exists()
+
+    def test_uninstall_invalid_git_file_format(self, tmp_path: Path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".git").write_text("invalid")
+        orch = HookUninstallOrchestrator(repo_root=repo)
+        assert orch.run() == 1
+
+    def test_uninstall_no_git_found(self, tmp_path: Path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        orch = HookUninstallOrchestrator(repo_root=repo)
+        assert orch.run() == 1
+
+    def test_uninstall_unlink_oserror_returns_1(self, git_repo: Path):
+        hook_path = git_repo / ".git" / "hooks" / "pre-push"
+        hook_path.write_text(_PRE_PUSH_HOOK_SCRIPT)
+        orch = HookUninstallOrchestrator(repo_root=git_repo)
+        with patch("pathlib.Path.unlink", side_effect=OSError("permission denied")):
+            assert orch.run() == 1

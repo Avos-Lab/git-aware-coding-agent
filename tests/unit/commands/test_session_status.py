@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 from avos_cli.commands.session_status import SessionStatusOrchestrator
+from avos_cli.exceptions import RepositoryContextError
 
 
 def _make_config_json(
@@ -217,4 +219,105 @@ class TestSessionWithoutPidFile:
         assert result["success"] is True
         assert result["data"]["active"] is True
         assert result["data"]["session_id"] == "sess_orphan"
+        assert result["data"]["watcher_alive"] is False
+
+
+class TestAdditionalCoverageBranches:
+    """Additional branch coverage for status error handling."""
+
+    def test_config_avos_error_json_mode(self, tmp_path, capsys):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".git").mkdir()
+
+        orchestrator = SessionStatusOrchestrator(repo_root=repo_root)
+        with patch(
+            "avos_cli.commands.session_status.load_config",
+            side_effect=RepositoryContextError("bad repo context"),
+        ):
+            code = orchestrator.run(json_output=True)
+
+        assert code == 1
+        out = capsys.readouterr().out
+        assert "REPOSITORY_CONTEXT_ERROR" in out
+
+    def test_config_avos_error_human_mode(self, tmp_path, capsys):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".git").mkdir()
+        orchestrator = SessionStatusOrchestrator(repo_root=repo_root)
+
+        with patch(
+            "avos_cli.commands.session_status.load_config",
+            side_effect=RepositoryContextError("bad repo context"),
+        ):
+            code = orchestrator.run(json_output=False)
+
+        assert code == 1
+
+    def test_invalid_pid_string_in_watcher_file(self, tmp_path, capsys):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".git").mkdir()
+        avos_dir = repo_root / ".avos"
+        _make_config_json(avos_dir)
+        _make_session_json(avos_dir, pid=123)
+        (avos_dir / "watcher.pid").write_text(json.dumps({"pid": "invalid"}))
+
+        orchestrator = SessionStatusOrchestrator(repo_root=repo_root)
+        code = orchestrator.run(json_output=True)
+
+        assert code == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result["data"]["watcher_alive"] is False
+
+    def test_non_json_active_session_with_agent_row(self, tmp_path):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".git").mkdir()
+        avos_dir = repo_root / ".avos"
+        _make_config_json(avos_dir)
+        _make_session_json(avos_dir, pid=os.getpid(), agent="agentA")
+
+        orchestrator = SessionStatusOrchestrator(repo_root=repo_root)
+        with patch("avos_cli.commands.session_status.render_kv_panel") as panel_mock:
+            code = orchestrator.run(json_output=False)
+
+        assert code == 0
+        panel_mock.assert_called_once()
+
+    def test_pid_string_numeric_marks_watcher_alive(self, tmp_path, capsys):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".git").mkdir()
+        avos_dir = repo_root / ".avos"
+        _make_config_json(avos_dir)
+        _make_session_json(avos_dir, pid=os.getpid(), agent="agentA")
+        (avos_dir / "watcher.pid").write_text(
+            json.dumps({"pid": str(os.getpid()), "session_id": "sess_abc123"})
+        )
+
+        orchestrator = SessionStatusOrchestrator(repo_root=repo_root)
+        code = orchestrator.run(json_output=True)
+
+        assert code == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result["data"]["watcher_alive"] is True
+
+    def test_pid_non_scalar_type_falls_back_to_dead(self, tmp_path, capsys):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".git").mkdir()
+        avos_dir = repo_root / ".avos"
+        _make_config_json(avos_dir)
+        _make_session_json(avos_dir, pid=os.getpid(), agent="agentA")
+        (avos_dir / "watcher.pid").write_text(
+            json.dumps({"pid": {"value": os.getpid()}, "session_id": "sess_abc123"})
+        )
+
+        orchestrator = SessionStatusOrchestrator(repo_root=repo_root)
+        code = orchestrator.run(json_output=True)
+
+        assert code == 0
+        result = json.loads(capsys.readouterr().out)
         assert result["data"]["watcher_alive"] is False

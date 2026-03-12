@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from avos_cli.commands.session_end import SessionEndOrchestrator
+from avos_cli.exceptions import RepositoryContextError
 
 
 def _make_config_json(avos_dir: Path) -> None:
@@ -291,3 +292,47 @@ class TestCleanupBehaviour:
         assert not (avos_dir / "watcher.pid").exists()
         assert not (avos_dir / "session_checkpoints.jsonl").exists()
         assert (avos_dir / "config.json").exists()
+
+
+class TestAdditionalCoverageBranches:
+    """Additional targeted branch coverage."""
+
+    def test_json_mode_config_not_initialized(self, tmp_path, capsys):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".git").mkdir()
+        orchestrator = _make_orchestrator(repo_root)
+        code = orchestrator.run(json_output=True)
+        assert code == 1
+        out = capsys.readouterr().out
+        assert "CONFIG_NOT_INITIALIZED" in out
+
+    def test_stop_watcher_invalid_pid_value(self, tmp_path):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".git").mkdir()
+        avos_dir = repo_root / ".avos"
+        _make_config_json(avos_dir)
+        _make_session_state(avos_dir)
+        (avos_dir / "watcher.pid").write_text(
+            json.dumps({"pid": "not-a-number", "session_id": "sess_abc123"})
+        )
+        _make_checkpoints(avos_dir, count=1)
+
+        orchestrator = _make_orchestrator(repo_root)
+        code = orchestrator.run()
+        assert code == 0
+
+    def test_resolve_author_handles_repo_context_error(self, tmp_path):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".git").mkdir()
+        git_client = MagicMock()
+        git_client.user_name.side_effect = RepositoryContextError("not in repo")
+        orchestrator = _make_orchestrator(repo_root, git_client=git_client)
+        assert orchestrator._resolve_author() == "unknown"
+
+    def test_pid_alive_true_branch(self):
+        with patch("os.kill") as kill_mock:
+            assert SessionEndOrchestrator._pid_alive(os.getpid()) is True
+        kill_mock.assert_called_once()
