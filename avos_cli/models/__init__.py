@@ -10,14 +10,10 @@ from avos_cli.models.artifacts import (
     DocArtifact,
     IssueArtifact,
     PRArtifact,
-    SessionArtifact,
 )
 from avos_cli.models.config import (
     LLMConfig,
     RepoConfig,
-    SessionCheckpoint,
-    SessionState,
-    WatcherPidState,
 )
 from avos_cli.models.query import (
     BudgetResult,
@@ -56,11 +52,7 @@ __all__ = [
     "SearchHit",
     "SearchRequest",
     "SearchResult",
-    "SessionArtifact",
-    "SessionCheckpoint",
-    "SessionState",
     "SynthesisRequest",
     "SynthesisResponse",
     "TimelineEvent",
-    "WatcherPidState",
 ]

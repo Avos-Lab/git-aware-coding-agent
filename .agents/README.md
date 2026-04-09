@@ -40,9 +40,6 @@ All platforms should integrate these commands:
 
 | Command | Purpose |
 |---------|---------|
-| `avos session-status --json` | Check if session is active |
-| `avos session-start --json "goal"` | Start a coding session |
-| `avos session-end --json` | End the current session |
 | `avos ask --json "question"` | Search memory for answers |
 | `avos history --json "subject"` | Get chronological history |
 | `avos ingest-pr --json org/repo N` | Ingest a single PR |
@@ -51,10 +48,9 @@ All platforms should integrate these commands:
 
 All platform integrations should follow these workflow guidelines:
 
-1. **Session Lifecycle**: Start sessions before coding, end after completion
-2. **Research Before Edit**: Check history and ask questions before modifying code
-3. **Ingest After PR**: Ingest PRs after pushing to remote
-4. **JSON Output**: Use `--json` for machine-readable output
+1. **Research Before Edit**: Check history and ask questions before modifying code
+2. **Ingest After PR**: Ingest PRs after pushing to remote
+3. **JSON Output**: Use `--json` for machine-readable output
 
 ## JSON Output Format
 

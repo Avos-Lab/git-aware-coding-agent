@@ -32,7 +32,6 @@ from avos_cli.utils.output import (
 _log = get_logger("commands.connect")
 
 _BOOTSTRAP_MARKER = "repo_connected"
-_SESSION_BOOTSTRAP_MARKER = "session_connected"
 
 
 class ConnectOrchestrator:
@@ -85,7 +84,6 @@ class ConnectOrchestrator:
             return self._last_exit_code
 
         memory_id = f"repo:{repo_slug}"
-        memory_id_session = f"repo:{repo_slug}-session"
 
         if not self._verify_avos_access(memory_id, _BOOTSTRAP_MARKER):
             return self._last_exit_code
@@ -95,15 +93,7 @@ class ConnectOrchestrator:
         ):
             return self._last_exit_code
 
-        if not self._verify_avos_access(memory_id_session, _SESSION_BOOTSTRAP_MARKER):
-            return self._last_exit_code
-
-        if not self._bootstrap_exists and not self._send_bootstrap_note(
-            memory_id_session, repo_slug, _SESSION_BOOTSTRAP_MARKER
-        ):
-            return self._last_exit_code
-
-        self._write_config(repo_slug, memory_id, memory_id_session)
+        self._write_config(repo_slug, memory_id)
 
         # Auto-install pre-push hook for automatic commit sync
         hook_installed = self._auto_install_hook()
@@ -115,7 +105,6 @@ class ConnectOrchestrator:
                 data={
                     "repo": repo_slug,
                     "memory_id": memory_id,
-                    "memory_id_session": memory_id_session,
                     "config_path": config_path,
                     "hook_installed": hook_installed,
                 },
@@ -126,8 +115,7 @@ class ConnectOrchestrator:
             render_kv_panel(
                 f"Connected to {repo_slug}",
                 [
-                    ("Memory A (past)", memory_id),
-                    ("Memory B (session)", memory_id_session),
+                    ("Memory", memory_id),
                     ("Pre-push hook", hook_status),
                     ("Next step", "avos ingest"),
                 ],
@@ -255,9 +243,7 @@ class ConnectOrchestrator:
             self._last_exit_code = 2
             return False
 
-    def _write_config(
-        self, repo_slug: str, memory_id: str, memory_id_session: str
-    ) -> None:
+    def _write_config(self, repo_slug: str, memory_id: str) -> None:
         """Write .avos/config.json only if content would change.
 
         Preserves connected_at from existing config to guarantee
@@ -271,14 +257,12 @@ class ConnectOrchestrator:
             existing
             and existing.get("repo") == repo_slug
             and existing.get("memory_id") == memory_id
-            and existing.get("memory_id_session") == memory_id_session
         ):
             connected_at = str(existing.get("connected_at", connected_at))
 
         new_data = {
             "repo": repo_slug,
             "memory_id": memory_id,
-            "memory_id_session": memory_id_session,
             "api_url": "",
             "api_key": "",
             "connected_at": connected_at,

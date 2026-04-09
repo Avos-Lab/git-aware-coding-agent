@@ -23,9 +23,6 @@ The following avos commands are available for integration:
 
 | Command | Purpose |
 |---------|---------|
-| `avos session-status --json` | Check if session is active |
-| `avos session-start --json "goal"` | Start a coding session |
-| `avos session-end --json` | End the current session |
 | `avos ask --json "question"` | Search memory for answers |
 | `avos history --json "subject"` | Get chronological history |
 | `avos ingest-pr --json org/repo N` | Ingest a single PR |

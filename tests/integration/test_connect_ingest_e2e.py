@@ -126,7 +126,6 @@ class TestConnectThenIngestE2E:
         assert config_path.exists()
         config = json.loads(config_path.read_text())
         assert config["memory_id"] == "repo:testorg/testrepo"
-        assert config["memory_id_session"] == "repo:testorg/testrepo-session"
         assert config["repo"] == "testorg/testrepo"
         assert config["schema_version"] == "2"
         assert "connected_at" in config
@@ -145,7 +144,7 @@ class TestConnectThenIngestE2E:
             repo_root=e2e_repo,
         )
         orch.run("testorg/testrepo")
-        assert mock_memory_client.add_memory.call_count == 2  # Memory A and Memory B
+        assert mock_memory_client.add_memory.call_count == 1
         call_kwargs = mock_memory_client.add_memory.call_args_list[0]
         assert "repo_connected" in str(call_kwargs)
 

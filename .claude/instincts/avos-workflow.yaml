@@ -27,24 +27,6 @@ Skip for low-risk docs/comment/test-only edits.
 - Related PRs and issues provide valuable information
 
 ---
-id: avos-session-lifecycle
-trigger: "when starting a coding task in a repository with avos"
-confidence: 0.85
-domain: workflow
-source: repo-curation
-source_repo: avos-dev-cli
----
-# Session Lifecycle Management
-
-## Action
-Before starting a coding task, run `avos session-status --json` to check if a session is active. If not, start one with `avos session-start --json "goal"`. End with `avos session-end --json` when complete.
-
-## Evidence
-- Sessions create audit trails for AI agent activity
-- Enterprise environments require tracking of changes
-- Session artifacts help future developers understand what was done
-
----
 id: avos-ingest-after-pr
 trigger: "after pushing a PR to a repository with avos"
 confidence: 0.8

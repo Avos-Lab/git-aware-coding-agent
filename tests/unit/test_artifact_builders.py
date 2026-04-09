@@ -1,7 +1,7 @@
 """Tests for AVOS-007: Artifact builders.
 
 Covers format fidelity, metadata completeness, deterministic hashing,
-and sensitive content exclusion for all 6 builders.
+and sensitive content exclusion for all builders.
 """
 
 from __future__ import annotations
@@ -10,13 +10,11 @@ from avos_cli.artifacts.commit_builder import CommitBuilder
 from avos_cli.artifacts.doc_builder import DocBuilder
 from avos_cli.artifacts.issue_builder import IssueBuilder
 from avos_cli.artifacts.pr_builder import PRThreadBuilder
-from avos_cli.artifacts.session_builder import SessionBuilder
 from avos_cli.models.artifacts import (
     CommitArtifact,
     DocArtifact,
     IssueArtifact,
     PRArtifact,
-    SessionArtifact,
 )
 
 
@@ -160,44 +158,6 @@ class TestCommitBuilder:
         assert h1 == h2
 
 
-class TestSessionBuilder:
-    def _make_session(self, **overrides) -> SessionArtifact:
-        defaults = {
-            "session_id": "sess-001",
-            "goal": "Fix payment retry bug",
-            "files_modified": ["billing/retry.py"],
-            "decisions": ["Used exponential backoff"],
-            "errors": ["TypeError on line 42"],
-            "resolution": "Fixed type mismatch in retry logic",
-            "timeline": ["10:00 started", "10:30 found bug", "11:00 fixed"],
-        }
-        defaults.update(overrides)
-        return SessionArtifact(**defaults)
-
-    def test_build_contains_type_header(self):
-        session = self._make_session()
-        output = SessionBuilder().build(session)
-        assert "[type: session]" in output
-
-    def test_build_contains_metadata(self):
-        session = self._make_session()
-        output = SessionBuilder().build(session)
-        assert "[session: sess-001]" in output
-
-    def test_build_contains_goal_and_resolution(self):
-        session = self._make_session()
-        output = SessionBuilder().build(session)
-        assert "Goal: Fix payment retry bug" in output
-        assert "Resolution: Fixed type mismatch" in output
-
-    def test_content_hash_deterministic(self):
-        session = self._make_session()
-        builder = SessionBuilder()
-        h1 = builder.content_hash(session)
-        h2 = builder.content_hash(session)
-        assert h1 == h2
-
-
 class TestDocBuilder:
     def _make_doc(self, **overrides) -> DocArtifact:
         defaults = {
@@ -260,28 +220,6 @@ class TestBuilderEdgeCases:
         assert "[labels:" not in output
         assert "Body:" not in output
         assert "Comments:" not in output
-
-    def test_session_no_optional_fields(self):
-        session = SessionArtifact(session_id="s1", goal="test")
-        output = SessionBuilder().build(session)
-        assert "Files modified:" not in output
-        assert "Decisions:" not in output
-        assert "Errors:" not in output
-        assert "Resolution:" not in output
-        assert "Timeline:" not in output
-
-    def test_session_with_all_fields(self):
-        session = SessionArtifact(
-            session_id="s1", goal="test",
-            files_modified=["a.py"], decisions=["d1"],
-            errors=["e1"], resolution="fixed", timeline=["t1"]
-        )
-        output = SessionBuilder().build(session)
-        assert "Files modified:" in output
-        assert "Decisions:" in output
-        assert "Errors:" in output
-        assert "Resolution:" in output
-        assert "Timeline:" in output
 
 
 class TestCrossBuilderHashUniqueness:

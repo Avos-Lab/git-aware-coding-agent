@@ -1,4 +1,4 @@
-"""Unit tests for ask/history/session-ask reply rendering helpers.
+"""Unit tests for ask/history reply rendering helpers.
 
 These tests focus on ANSI/JSON rendering helper branches that are hard to
 exercise through orchestrator-only tests.
@@ -12,8 +12,6 @@ from avos_cli.commands.ask import _build_raw_output as ask_build_raw_output
 from avos_cli.commands.ask import _render_reply_output as ask_render_reply_output
 from avos_cli.commands.history import _build_raw_output as history_build_raw_output
 from avos_cli.commands.history import _render_reply_output as history_render_reply_output
-from avos_cli.commands.session_ask import _build_raw_output as session_build_raw_output
-from avos_cli.commands.session_ask import _render_reply_output as session_render_reply_output
 from avos_cli.models.query import SanitizedArtifact
 
 
@@ -58,9 +56,8 @@ class TestRawBuilders:
         arts = [_art("n1"), _art("n2")]
         ask_raw = ask_build_raw_output(arts)
         history_raw = history_build_raw_output(arts)
-        session_raw = session_build_raw_output(arts)
 
-        for raw in (ask_raw, history_raw, session_raw):
+        for raw in (ask_raw, history_raw):
             assert "[n1]" in raw
             assert "---" in raw
 
@@ -165,36 +162,3 @@ class TestHistoryRenderHelper:
         kwargs = print_json_mock.call_args.kwargs
         assert kwargs["success"] is False
         assert kwargs["error"]["code"] == "REPLY_SERVICE_UNAVAILABLE"
-
-
-class TestSessionAskRenderHelper:
-    def test_json_path_prints_converter_output_directly(self, capsys) -> None:
-        reply = _ReplyServiceStub(ask_json='{"format":"avos.ask.v1"}')
-        session_render_reply_output("q", "raw", reply, json_output=True)
-        out = capsys.readouterr().out
-        assert '"format":"avos.ask.v1"' in out
-
-    def test_json_path_with_empty_converter_output_reports_error(self) -> None:
-        reply = _ReplyServiceStub(ask_json=None)
-        with patch("avos_cli.commands.session_ask.print_json") as print_json_mock:
-            session_render_reply_output("q", "raw", reply, json_output=True)
-        kwargs = print_json_mock.call_args.kwargs
-        assert kwargs["success"] is False
-        assert kwargs["error"]["code"] == "REPLY_SERVICE_UNAVAILABLE"
-
-    def test_non_json_path_renders_answer_and_evidence(self) -> None:
-        reply = _ReplyServiceStub(
-            ask_text="ANSWER: Session details.\n\nEVIDENCE:\n- [n1] one\n- [n2] two"
-        )
-        with (
-            patch("avos_cli.commands.session_ask.render_panel") as panel_mock,
-            patch("avos_cli.commands.session_ask.render_table") as table_mock,
-        ):
-            session_render_reply_output("q", "raw", reply, json_output=False)
-        panel_mock.assert_called_once()
-        table_mock.assert_called_once()
-
-    def test_no_reply_service_non_json_falls_back_to_plain_info(self) -> None:
-        with patch("avos_cli.commands.session_ask.print_info") as info_mock:
-            session_render_reply_output("q", "raw", None, json_output=False)
-        info_mock.assert_called_once_with("raw")

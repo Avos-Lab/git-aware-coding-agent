@@ -8,12 +8,10 @@ from avos_cli.artifacts.commit_builder import CommitBuilder
 from avos_cli.artifacts.doc_builder import DocBuilder
 from avos_cli.artifacts.issue_builder import IssueBuilder
 from avos_cli.artifacts.pr_builder import PRThreadBuilder
-from avos_cli.artifacts.session_builder import SessionBuilder
 
 __all__ = [
     "CommitBuilder",
     "DocBuilder",
     "IssueBuilder",
     "PRThreadBuilder",
-    "SessionBuilder",
 ]

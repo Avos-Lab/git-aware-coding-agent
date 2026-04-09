@@ -40,7 +40,6 @@ def valid_config_data() -> dict:
     return {
         "repo": "org/repo",
         "memory_id": "repo:org/repo",
-        "memory_id_session": "repo:org/repo-session",
         "api_url": "https://api.example.com",
         "api_key": "sk_test_key_12345",
     }

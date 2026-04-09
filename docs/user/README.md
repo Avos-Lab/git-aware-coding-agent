@@ -46,17 +46,13 @@ avos ask "How does authentication work?"
 
 ## Command Reference
 
-| Command                                      | Description                                   |
-| -------------------------------------------- | --------------------------------------------- |
-| [connect](commands/connect.md)               | Connect a repository to Avos Memory           |
-| [ingest](commands/ingest.md)                 | Ingest repository history                     |
-| [ingest-pr](commands/ingest-pr.md)           | Ingest a single PR                            |
-| [ask](commands/ask.md)                       | Ask questions and get evidence-backed answers |
-| [history](commands/history.md)               | Get chronological history of a subject        |
-| [session-start](commands/session-start.md)   | Start a coding session                        |
-| [session-end](commands/session-end.md)       | End the current session                       |
-| [session-status](commands/session-status.md) | Check if a session is active                  |
-| [session-ask](commands/session-ask.md)       | Ask questions about current session           |
+| Command                            | Description                                   |
+| ---------------------------------- | --------------------------------------------- |
+| [connect](commands/connect.md)     | Connect a repository to Avos Memory           |
+| [ingest](commands/ingest.md)       | Ingest repository history                     |
+| [ingest-pr](commands/ingest-pr.md) | Ingest a single PR                            |
+| [ask](commands/ask.md)             | Ask questions and get evidence-backed answers |
+| [history](commands/history.md)     | Get chronological history of a subject        |
 
 ## Global Options
 
@@ -70,9 +66,6 @@ All commands support `--json` for machine-readable output:
 ```bash
 avos --json ask "How does authentication work?"
 avos --json history "payment retry logic"
-avos --json session-status
-avos --json session-start "Implement feature X"
-avos --json session-end
 avos --json ingest-pr org/repo 123
 ```
 
@@ -123,11 +116,9 @@ See `.agents/README.md` for the integration guide.
 
 ### Agent Workflow
 
-1. **Start session**: `avos session-start --json "goal"`
-2. **Research**: `avos history --json "subject"` and `avos ask --json "question"`
-3. **Code**: Make your changes
-4. **End session**: `avos session-end --json`
-5. **After PR**: `avos ingest-pr --json org/repo PR_NUMBER`
+1. **Research**: `avos history --json "subject"` and `avos ask --json "question"`
+2. **Code**: Make your changes
+3. **After PR**: `avos ingest-pr --json org/repo PR_NUMBER`
 
 ## Troubleshooting
 

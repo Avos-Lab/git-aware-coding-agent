@@ -40,7 +40,6 @@ def configured_repo(git_repo: Path) -> Path:
         "api_url": "",
         "connected_at": "2026-03-06T00:00:00+00:00",
         "memory_id": "repo:testorg/testrepo",
-        "memory_id_session": "repo:testorg/testrepo-session",
         "repo": "testorg/testrepo",
         "schema_version": "2",
     }
@@ -320,27 +319,6 @@ class TestAskCLI:
         assert "avos.ask.v1" in result.output
 
 
-class TestSessionAskCLI:
-    """Tests that exercise `avos session-ask` through the CLI entrypoint."""
-
-    def test_session_ask_help_shows(self):
-        result = runner.invoke(app, ["session-ask", "--help"])
-        assert result.exit_code == 0
-        assert "question" in result.output.lower() or "QUESTION" in result.output
-
-    def test_session_ask_empty_results(self, configured_repo: Path):
-        mem_m = MagicMock()
-        mem_m.search.return_value = SearchResult(results=[], total_count=0)
-        with (
-            _env_patch(),
-            patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
-            patch("avos_cli.services.memory_client.AvosMemoryClient", return_value=mem_m),
-            patch("avos_cli.services.llm_client.LLMClient"),
-        ):
-            result = runner.invoke(app, ["session-ask", "What is the team working on?"])
-        assert result.exit_code == 0
-
-
 class TestHistoryCLI:
     """Tests that exercise `avos history` through the CLI entrypoint."""
 
@@ -391,108 +369,6 @@ class TestHistoryCLI:
         assert result.exit_code == 0
         assert '"success": true' in result.output or '"success":true' in result.output
         assert "avos.history.v1" in result.output
-
-
-class TestSessionStartCLI:
-    """Tests that exercise `avos session-start` through the CLI entrypoint."""
-
-    def test_missing_api_key_exits_1(self, git_repo: Path):
-        with (
-            _env_patch({"AVOS_API_KEY": ""}),
-            patch("avos_cli.config.manager.find_repo_root", return_value=git_repo),
-        ):
-            result = runner.invoke(app, ["session-start", "Test goal"])
-        assert result.exit_code == 1
-
-    def test_session_start_help_shows(self):
-        result = runner.invoke(app, ["session-start", "--help"])
-        assert result.exit_code == 0
-        assert "goal" in result.output.lower() or "GOAL" in result.output
-
-    def test_session_start_no_config_exits_1(self, git_repo: Path):
-        git_m = MagicMock()
-        mem_m = MagicMock()
-        with (
-            _env_patch(),
-            patch("avos_cli.config.manager.find_repo_root", return_value=git_repo),
-            patch("avos_cli.services.git_client.GitClient", return_value=git_m),
-            patch("avos_cli.services.memory_client.AvosMemoryClient", return_value=mem_m),
-        ):
-            result = runner.invoke(app, ["session-start", "Test goal"])
-        assert result.exit_code == 1
-
-    def test_session_start_happy_path(self, configured_repo: Path):
-        git_m = MagicMock()
-        git_m.current_branch.return_value = "main"
-        git_m.is_worktree.return_value = False
-        mem_m = MagicMock()
-        with (
-            _env_patch(),
-            patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
-            patch("avos_cli.services.git_client.GitClient", return_value=git_m),
-            patch("avos_cli.services.memory_client.AvosMemoryClient", return_value=mem_m),
-            patch("avos_cli.commands.session_start.subprocess") as mock_sub,
-        ):
-            mock_proc = MagicMock()
-            mock_proc.pid = 12345
-            mock_proc.poll.return_value = None
-            mock_sub.Popen.return_value = mock_proc
-            result = runner.invoke(app, ["session-start", "Implement feature"])
-        assert result.exit_code == 0
-        assert (configured_repo / ".avos" / "session.json").exists()
-
-
-class TestSessionEndCLI:
-    """Tests that exercise `avos session-end` through the CLI entrypoint."""
-
-    def test_missing_api_key_exits_1(self, git_repo: Path):
-        with (
-            _env_patch({"AVOS_API_KEY": ""}),
-            patch("avos_cli.config.manager.find_repo_root", return_value=git_repo),
-        ):
-            result = runner.invoke(app, ["session-end"])
-        assert result.exit_code == 1
-
-    def test_session_end_help_shows(self):
-        result = runner.invoke(app, ["session-end", "--help"])
-        assert result.exit_code == 0
-
-    def test_session_end_no_session_exits_1(self, configured_repo: Path):
-        mem_m = MagicMock()
-        llm_m = MagicMock()
-        with (
-            _env_patch(),
-            patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
-            patch("avos_cli.services.memory_client.AvosMemoryClient", return_value=mem_m),
-            patch("avos_cli.services.llm_client.LLMClient", return_value=llm_m),
-        ):
-            result = runner.invoke(app, ["session-end"])
-        assert result.exit_code == 1
-
-    def test_session_end_happy_path(self, configured_repo: Path):
-        avos_dir = configured_repo / ".avos"
-        session = {
-            "session_id": "sess_test123",
-            "goal": "Test goal",
-            "start_time": "2026-03-07T10:00:00+00:00",
-            "branch": "main",
-            "memory_id": "repo:testorg/testrepo-session",
-        }
-        (avos_dir / "session.json").write_text(json.dumps(session))
-        pid_data = {"pid": 999999, "started_at": "2026-03-07T10:00:00+00:00", "session_id": "sess_test123"}
-        (avos_dir / "watcher.pid").write_text(json.dumps(pid_data))
-
-        mem_m = MagicMock()
-        llm_m = MagicMock()
-        with (
-            _env_patch(),
-            patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
-            patch("avos_cli.services.memory_client.AvosMemoryClient", return_value=mem_m),
-            patch("avos_cli.services.llm_client.LLMClient", return_value=llm_m),
-        ):
-            result = runner.invoke(app, ["session-end"])
-        assert result.exit_code == 0
-        mem_m.add_memory.assert_called_once()
 
 
 class TestParseSinceDays:

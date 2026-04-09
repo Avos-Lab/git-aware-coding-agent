@@ -30,11 +30,6 @@ class ErrorCode(str, Enum):
     LLM_SYNTHESIS_ERROR = "LLM_SYNTHESIS_ERROR"
     CONTEXT_BUDGET_ERROR = "CONTEXT_BUDGET_ERROR"
     QUERY_EMPTY_RESULT = "QUERY_EMPTY_RESULT"
-    SESSION_ACTIVE_CONFLICT = "SESSION_ACTIVE_CONFLICT"
-    SESSION_NOT_FOUND = "SESSION_NOT_FOUND"
-    WATCHER_SPAWN_FAILED = "WATCHER_SPAWN_FAILED"
-    WATCHER_STOP_FAILED = "WATCHER_STOP_FAILED"
-    CHECKPOINT_PARSE_ERROR = "CHECKPOINT_PARSE_ERROR"
 
 
 class AvosError(Exception):
@@ -274,72 +269,4 @@ class ContextBudgetError(AvosError):
             code=ErrorCode.CONTEXT_BUDGET_ERROR,
             hint="Insufficient evidence artifacts for synthesis. Using fallback output.",
         )
-
-
-class SessionActiveError(AvosError):
-    """Raised when a session is already active and blocks a new start.
-
-    Args:
-        message: Description of the conflict.
-    """
-
-    def __init__(self, message: str | None = None) -> None:
-        super().__init__(
-            message=message or "A session is already active.",
-            code=ErrorCode.SESSION_ACTIVE_CONFLICT,
-            hint="Run 'avos session-end' to finish the current session first.",
-        )
-
-
-class SessionNotFoundError(AvosError):
-    """Raised when no active session exists for an end operation.
-
-    Args:
-        message: Description of the missing session.
-    """
-
-    def __init__(self, message: str | None = None) -> None:
-        super().__init__(
-            message=message or "No active session found.",
-            code=ErrorCode.SESSION_NOT_FOUND,
-            hint="Run 'avos session-start' to begin a new session.",
-        )
-
-
-class WatcherLifecycleError(AvosError):
-    """Raised when the watcher process fails to spawn or stop.
-
-    Args:
-        message: Description of the lifecycle failure.
-        failure_type: 'spawn' or 'stop' to select the appropriate error code.
-    """
-
-    def __init__(self, message: str, failure_type: str = "spawn") -> None:
-        self.failure_type = failure_type
-        code = (
-            ErrorCode.WATCHER_STOP_FAILED
-            if failure_type == "stop"
-            else ErrorCode.WATCHER_SPAWN_FAILED
-        )
-        super().__init__(
-            message=message,
-            code=code,
-            hint="Check process permissions and system resources.",
-        )
-
-
-class CheckpointParseError(AvosError):
-    """Raised when checkpoint JSONL lines cannot be parsed.
-
-    Args:
-        message: Description of the parse failure.
-    """
-
-    def __init__(self, message: str) -> None:
-        super().__init__(
-            message=message,
-            code=ErrorCode.CHECKPOINT_PARSE_ERROR,
-            hint="Checkpoint file may be corrupted. Session will use available data.",
-        )
-
 

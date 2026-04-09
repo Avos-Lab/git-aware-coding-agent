@@ -19,19 +19,18 @@ Avos gives AI coding agents persistent, queryable memory so they can remember **
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Avos CLI                                 │
-│    connect · ingest · ask · history · session-start · session-end│
+│              connect · ingest · ask · history                   │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Avos Memory Layer                           │
-├─────────────────────────────┬───────────────────────────────────┤
-│   Repository Memory         │   Session Memory                  │
-│   ├── PRs & commits         │   ├── session goals               │
-│   ├── issues & comments     │   ├── files touched               │
-│   ├── documentation         │   ├── decisions made              │
-│   └── historical context    │   └── audit trail                 │
-└─────────────────────────────┴───────────────────────────────────┘
+│                   Repository Memory                             │
+│                   ├── PRs & commits                             │
+│                   ├── issues & comments                         │
+│                   ├── documentation                             │
+│                   └── historical context                        │
+└─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -78,7 +77,6 @@ They can read the current file tree, but they cannot know:
 - what constraints shaped a module
 - which old assumptions still matter
 - what happened in previous PRs
-- how a feature was implemented across a session
 
 This causes bad rewrites, repeated mistakes, and fragile changes.
 
@@ -96,26 +94,15 @@ Agents can query this memory before reasoning about code, giving them long-term 
 - **PR-aware reasoning** about past changes
 - **Queryable knowledge** from code, docs, and artifacts
 - **Traceable decision history** for agents
-- **Audit trails** for compliance and accountability
 - **Portable memory** that moves between agents and tools
 
 ---
 
-## Two Memory Planes
-
-### Repository Memory (long-term)
+## Repository Memory
 
 Stores the durable history of the codebase: PRs, commits, issues, comments, and documentation.
 
 Powers `avos ask` and `avos history`.
-
-### Session Memory (implementation trail)
-
-Stores the working context of each coding session: goal, files touched, decisions, errors, tests run, and remaining risks.
-
-Powers `avos session-start`, `avos session-end`, and `avos session-ask`.
-
-Together, these let you understand both the **history of the repository** and the **audit trail of how a change was built**.
 
 ---
 
@@ -138,43 +125,27 @@ Teams can query historical reasoning before modifying old code.
 avos ask "What constraints shaped the auth module?"
 ```
 
-### Autonomous workflows
-
-Agents coordinating on complex tasks can share persistent knowledge.
-
-```bash
-avos session-start "Implement payment retry"
-# ... agent works ...
-avos session-end
-```
-
 ### Onboarding
 
 New engineers or agents can understand the trajectory of the codebase.
 
 ```bash
 avos ask "What is this subsystem responsible for?"
-avos session-ask "How was this retry flow implemented?"
+avos history "retry flow"
 ```
 
 ---
 
 ## Command Reference
 
-| Command                                                 | What it does                                                    |
-| ------------------------------------------------------- | --------------------------------------------------------------- |
-| `avos connect org/repo`                                 | Attach a repository to Avos Memory                              |
-| `avos ingest org/repo --since 90d`                      | Import PRs, issues, commits, and docs into repository memory    |
-| `avos ingest-pr org/repo 123`                           | Ingest a single PR (after push/merge)                           |
-| `avos ask "question"`                                   | Search repository memory for evidence-backed answers            |
-| `avos history "subject"`                                | Reconstruct the chronological history of a subsystem or concept |
-| `avos session-start "goal"`                             | Start a tracked coding session                                  |
-| `avos session-end`                                      | End the session and store the implementation trail              |
-| `avos session-status`                                   | Check if a session is currently active                          |
-| `avos session-ask "question"`                           | Search session memory for implementation context                |
-| `avos worktree-add <path> <branch> "goal" --agent name` | Create a git worktree with auto session start                   |
-| `avos worktree-init`                                    | Initialize avos in an existing git worktree                     |
-| `avos hook-install`                                     | Install pre-push hook (auto-installed on connect)               |
+| Command                            | What it does                                                    |
+| ---------------------------------- | --------------------------------------------------------------- |
+| `avos connect org/repo`            | Attach a repository to Avos Memory                              |
+| `avos ingest org/repo --since 90d` | Import PRs, issues, commits, and docs into repository memory    |
+| `avos ingest-pr org/repo 123`      | Ingest a single PR (after push/merge)                           |
+| `avos ask "question"`              | Search repository memory for evidence-backed answers            |
+| `avos history "subject"`           | Reconstruct the chronological history of a subsystem or concept |
+| `avos hook-install`                | Install pre-push hook (auto-installed on connect)               |
 
 ### Global Options
 
@@ -197,7 +168,6 @@ When you connect a repository, avos automatically installs a **pre-push git hook
 Every command supports `--json` for strict machine-readable output:
 
 ```bash
-avos --json session-status
 avos --json ask "how does auth work?"
 avos --json ingest-pr org/repo 123
 ```
@@ -241,7 +211,6 @@ Avos ships with built-in integration files for AI coding platforms.
 .cursor/
 ├── rules/avos-agent-workflow.mdc     # Always-on workflow rules
 └── skills/
-    ├── avos-session/SKILL.md         # Session lifecycle
     ├── avos-search/SKILL.md          # Memory search with avos ask
     ├── avos-history/SKILL.md         # Chronological history
     └── avos-ingest-pr/SKILL.md       # Single-PR ingest after push
@@ -275,37 +244,11 @@ avos ask "why does this function exist?"
 avos history "module-or-function-name"
 ```
 
-### During a coding session
-
-```bash
-avos session-start "Fix retry backoff in payment worker"
-# ... do work ...
-avos session-end
-```
-
 ### After pushing a PR
 
 ```bash
 avos ingest-pr org/repo 456
 ```
-
----
-
-## Multi-Agent Parallel Development
-
-Avos supports multiple agents working in parallel via git worktrees:
-
-```bash
-# Create a worktree with automatic session start
-avos worktree-add ../feature-x feature-branch "Implement auth" --agent agentA
-
-# Or initialize an existing worktree
-cd ../existing-worktree
-avos worktree-init
-avos session-start --agent agentB "Build pagination"
-```
-
-In a worktree, `--agent` is **required** to distinguish parallel sessions.
 
 ---
 
@@ -338,8 +281,8 @@ avos_cli/
 | `AVOS_API_KEY`        | All commands                     | Avos Memory API key from `https://avoslab.com/`          |
 | `AVOS_API_URL`        | All commands                     | API endpoint (default: `https://avosmemory.avoslab.com`) |
 | `GITHUB_TOKEN`        | `connect`, `ingest`, `ingest-pr` | GitHub personal access token                             |
-| `ANTHROPIC_API_KEY`   | `ask`, `history`, `session-ask`  | Anthropic API key for LLM synthesis                      |
-| `OPENAI_API_KEY`      | `ask`, `history`, `session-ask`  | Alternative: OpenAI API key                              |
+| `ANTHROPIC_API_KEY`   | `ask`, `history`                 | Anthropic API key for LLM synthesis                      |
+| `OPENAI_API_KEY`      | `ask`, `history`                 | Alternative: OpenAI API key                              |
 | `REPLY_MODEL`         | `--json` for `ask`/`history`     | Model identifier for output formatting                   |
 | `REPLY_MODEL_URL`     | `--json` for `ask`/`history`     | API endpoint for reply model                             |
 | `REPLY_MODEL_API_KEY` | `--json` for `ask`/`history`     | API key for reply model                                  |
@@ -362,14 +305,6 @@ mypy avos_cli/
 ```
 
 Coverage target: 90%+ (enforced in CI).
-
----
-
-## Compliance and Auditability
-
-Session memory preserves a searchable trail of who changed what, why, what tests were run, and what risks remained. This is useful for engineering reviews, internal accountability, and regulated environments.
-
-However: Avos is not itself a compliance certification. Session memory is **supporting evidence**, not a full compliance program.
 
 ---
 

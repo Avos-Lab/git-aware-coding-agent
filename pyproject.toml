@@ -31,7 +31,6 @@ dependencies = [
     "httpx>=0.27.0",
     "tenacity>=8.2.0",
     "rich>=13.0.0",
-    "watchdog>=4.0.0",
     "python-dotenv>=1.0.1",
 ]
 
@@ -134,7 +133,6 @@ exclude_lines = [
 omit = [
     "avos_cli/utils/output.py",
     "avos_cli/services/llm_client.py",
-    "avos_cli/services/watcher.py",
     "avos_cli/parsers/*",
     "avos_cli/cli/main.py",
 ]

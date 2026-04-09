@@ -69,14 +69,6 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 **Solution:** Run from a directory that contains a `.git` folder, or from a subdirectory of such a repo.
 
-## Session Errors
-
-### SESSION_ACTIVE_CONFLICT
-
-**Cause:** Trying to start a session when one is already active.
-
-**Solution:** Run `avos session-end` first, then `avos session-start`.
-
 ## API and Network
 
 ### UPSTREAM_UNAVAILABLE

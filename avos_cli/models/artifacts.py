@@ -81,32 +81,6 @@ class CommitArtifact(BaseModel):
     diff_stats: str | None = None
 
 
-class SessionArtifact(BaseModel):
-    """Session data for the SessionBuilder.
-
-    Args:
-        session_id: Unique session identifier.
-        goal: Session goal description.
-        author: Developer identity from git config (name, optionally with email). Defaults to "unknown".
-        files_modified: Files modified during the session.
-        decisions: Key decisions made during the session.
-        errors: Errors encountered during the session.
-        resolution: How the session goal was resolved.
-        timeline: Chronological event entries.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    session_id: str
-    goal: str
-    author: str = ""
-    files_modified: list[str] = []
-    decisions: list[str] = []
-    errors: list[str] = []
-    resolution: str | None = None
-    timeline: list[str] = []
-
-
 class DocArtifact(BaseModel):
     """Documentation data for the DocBuilder.
 

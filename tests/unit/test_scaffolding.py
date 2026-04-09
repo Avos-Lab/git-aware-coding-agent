@@ -195,11 +195,6 @@ class TestExceptionHierarchy:
             "LLM_SYNTHESIS_ERROR",
             "CONTEXT_BUDGET_ERROR",
             "QUERY_EMPTY_RESULT",
-            "SESSION_ACTIVE_CONFLICT",
-            "SESSION_NOT_FOUND",
-            "WATCHER_SPAWN_FAILED",
-            "WATCHER_STOP_FAILED",
-            "CHECKPOINT_PARSE_ERROR",
         }
         actual_codes = {e.value for e in ErrorCode}
         assert actual_codes == expected_codes
