@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -105,7 +104,7 @@ class TestFullPipeline:
         respx.get(f"{API}/repos/org/repo/pulls/1245").mock(
             return_value=httpx.Response(
                 200,
-                text=f"diff --git a/feature.py b/feature.py\n+def feature():\n+    pass\n",
+                text="diff --git a/feature.py b/feature.py\n+def feature():\n+    pass\n",
                 headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
             )
         )
