@@ -145,3 +145,127 @@ class TestDiffStats:
 class TestIsWorktree:
     def test_normal_repo_is_not_worktree(self, git_repo: Path, client: GitClient):
         assert client.is_worktree(git_repo) is False
+
+
+class TestCommitPatch:
+    """Tests for commit_patch method."""
+
+    def test_returns_unified_diff(self, git_repo: Path, client: GitClient):
+        """Test that commit_patch returns a unified diff."""
+        (git_repo / "file.py").write_text("def hello():\n    print('hello')\n")
+        subprocess.run(["git", "add", "."], cwd=git_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add hello function"],
+            cwd=git_repo, capture_output=True, check=True,
+        )
+        commits = client.commit_log(git_repo)
+        sha = commits[0]["hash"]
+
+        patch = client.commit_patch(git_repo, sha)
+        assert "diff --git" in patch
+        assert "file.py" in patch
+        assert "+def hello():" in patch
+
+    def test_with_short_sha(self, git_repo: Path, client: GitClient):
+        """Test that commit_patch works with short SHA."""
+        (git_repo / "file.py").write_text("content")
+        subprocess.run(["git", "add", "."], cwd=git_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            cwd=git_repo, capture_output=True, check=True,
+        )
+        commits = client.commit_log(git_repo)
+        short_sha = commits[0]["hash"][:7]
+
+        patch = client.commit_patch(git_repo, short_sha)
+        assert "diff --git" in patch
+
+    def test_initial_commit_diff(self, git_repo: Path, client: GitClient):
+        """Test that initial commit (root) produces a valid diff."""
+        commits = client.commit_log(git_repo)
+        initial_sha = commits[-1]["hash"]
+
+        patch = client.commit_patch(git_repo, initial_sha)
+        assert "diff --git" in patch
+        assert "README.md" in patch
+
+    def test_invalid_sha_returns_empty(self, git_repo: Path, client: GitClient):
+        """Test that invalid SHA returns empty string."""
+        patch = client.commit_patch(git_repo, "0000000000000000000000000000000000000000")
+        assert patch == ""
+
+    def test_merge_commit_first_parent(self, git_repo: Path, client: GitClient):
+        """Test that merge commits use first-parent diff."""
+        subprocess.run(
+            ["git", "checkout", "-b", "feature"],
+            cwd=git_repo, capture_output=True, check=True,
+        )
+        (git_repo / "feature.py").write_text("feature code")
+        subprocess.run(["git", "add", "."], cwd=git_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Feature commit"],
+            cwd=git_repo, capture_output=True, check=True,
+        )
+
+        subprocess.run(
+            ["git", "checkout", "main"] if (git_repo / ".git" / "refs" / "heads" / "main").exists()
+            else ["git", "checkout", "master"],
+            cwd=git_repo, capture_output=True, check=True,
+        )
+        (git_repo / "main.py").write_text("main code")
+        subprocess.run(["git", "add", "."], cwd=git_repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Main commit"],
+            cwd=git_repo, capture_output=True, check=True,
+        )
+
+        subprocess.run(
+            ["git", "merge", "feature", "--no-ff", "-m", "Merge feature"],
+            cwd=git_repo, capture_output=True, check=True,
+        )
+        commits = client.commit_log(git_repo)
+        merge_sha = commits[0]["hash"]
+
+        patch = client.commit_patch(git_repo, merge_sha)
+        assert "feature.py" in patch
+
+
+class TestExpandShortSha:
+    """Tests for expand_short_sha method."""
+
+    def test_expands_short_sha(self, git_repo: Path, client: GitClient):
+        """Test that short SHA is expanded to full 40-char SHA."""
+        commits = client.commit_log(git_repo)
+        full_sha = commits[0]["hash"]
+        short_sha = full_sha[:7]
+
+        expanded = client.expand_short_sha(git_repo, short_sha)
+        assert expanded == full_sha
+        assert len(expanded) == 40
+
+    def test_full_sha_returns_same(self, git_repo: Path, client: GitClient):
+        """Test that full SHA returns the same value."""
+        commits = client.commit_log(git_repo)
+        full_sha = commits[0]["hash"]
+
+        expanded = client.expand_short_sha(git_repo, full_sha)
+        assert expanded == full_sha
+
+    def test_invalid_sha_returns_none(self, git_repo: Path, client: GitClient):
+        """Test that invalid SHA returns None."""
+        expanded = client.expand_short_sha(git_repo, "0000000")
+        assert expanded is None
+
+    def test_ambiguous_sha_returns_none(self, git_repo: Path, client: GitClient):
+        """Test that ambiguous short SHA returns None.
+
+        Note: This is hard to test reliably since we'd need many commits
+        with colliding prefixes. We test the error handling path instead.
+        """
+        expanded = client.expand_short_sha(git_repo, "xyz")
+        assert expanded is None
+
+    def test_non_repo_raises(self, tmp_path: Path, client: GitClient):
+        """Test that non-repo path raises RepositoryContextError."""
+        with pytest.raises(RepositoryContextError):
+            client.expand_short_sha(tmp_path, "abc1234")

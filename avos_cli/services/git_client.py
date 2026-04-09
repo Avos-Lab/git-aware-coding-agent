@@ -285,6 +285,44 @@ class GitClient:
         git_path = repo_path / ".git"
         return git_path.is_file()
 
+    def commit_patch(self, repo_path: Path, sha: str) -> str:
+        """Get the unified diff patch for a single commit.
+
+        Uses `git show --format= <sha>` to get the patch. For merge commits,
+        uses first-parent diff (--first-parent) to avoid combined diff noise.
+
+        Args:
+            repo_path: Path to the git repository.
+            sha: Commit SHA (short or full).
+
+        Returns:
+            Unified diff text, or empty string if commit not found.
+        """
+        args = ["show", "--format=", "--first-parent", "-p", sha]
+        return self._run_git(args, repo_path)
+
+    def expand_short_sha(self, repo_path: Path, short_sha: str) -> str | None:
+        """Expand a short SHA to the full 40-character SHA.
+
+        Uses `git rev-parse <sha>` to resolve the full SHA.
+
+        Args:
+            repo_path: Path to the git repository.
+            short_sha: Short or full commit SHA.
+
+        Returns:
+            Full 40-character SHA, or None if not found or ambiguous.
+
+        Raises:
+            RepositoryContextError: If repo_path is not a git repo.
+        """
+        output = self._run_git(["rev-parse", short_sha], repo_path)
+        if not output or len(output) != 40:
+            return None
+        if not all(c in "0123456789abcdef" for c in output.lower()):
+            return None
+        return output
+
 
 def _parse_remote_url(url: str) -> str | None:
     """Extract org/repo from a git remote URL.

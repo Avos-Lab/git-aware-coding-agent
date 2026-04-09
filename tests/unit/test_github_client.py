@@ -248,3 +248,150 @@ class TestTokenHeader:
         )
         client.list_pull_requests(OWNER, REPO)
         assert route.calls[0].request.headers["authorization"] == f"Bearer {TOKEN}"
+
+
+class TestGetPRDiff:
+    """Tests for get_pr_diff method."""
+
+    @respx.mock
+    def test_returns_unified_diff(self, client: GitHubClient):
+        diff_text = """diff --git a/file.py b/file.py
+index 1a2b3c4..5d6e7f8 100644
+--- a/file.py
++++ b/file.py
+@@ -1,3 +1,4 @@
+ def hello():
+-    print("old")
++    print("new")
++    return True
+"""
+        respx.get(f"{API}/repos/{OWNER}/{REPO}/pulls/1245").mock(
+            return_value=httpx.Response(
+                200,
+                text=diff_text,
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                    "Content-Type": "text/plain",
+                },
+            )
+        )
+        result = client.get_pr_diff(OWNER, REPO, 1245)
+        assert result == diff_text
+        assert "diff --git" in result
+
+    @respx.mock
+    def test_sends_diff_accept_header(self, client: GitHubClient):
+        route = respx.get(f"{API}/repos/{OWNER}/{REPO}/pulls/1").mock(
+            return_value=httpx.Response(
+                200,
+                text="diff content",
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                },
+            )
+        )
+        client.get_pr_diff(OWNER, REPO, 1)
+        assert route.calls[0].request.headers["accept"] == "application/vnd.github.v3.diff"
+
+    @respx.mock
+    def test_404_raises_resource_not_found(self, client: GitHubClient):
+        respx.get(f"{API}/repos/{OWNER}/{REPO}/pulls/9999").mock(
+            return_value=httpx.Response(404, json={"message": "Not Found"})
+        )
+        with pytest.raises(ResourceNotFoundError):
+            client.get_pr_diff(OWNER, REPO, 9999)
+
+    @respx.mock
+    def test_empty_diff(self, client: GitHubClient):
+        respx.get(f"{API}/repos/{OWNER}/{REPO}/pulls/1").mock(
+            return_value=httpx.Response(
+                200,
+                text="",
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                },
+            )
+        )
+        result = client.get_pr_diff(OWNER, REPO, 1)
+        assert result == ""
+
+
+class TestListPRCommits:
+    """Tests for list_pr_commits method."""
+
+    @respx.mock
+    def test_returns_commit_shas(self, client: GitHubClient):
+        respx.get(f"{API}/repos/{OWNER}/{REPO}/pulls/1245/commits").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"sha": "abc123def456789012345678901234567890abcd"},
+                    {"sha": "def456789012345678901234567890abcdef12"},
+                    {"sha": "789012345678901234567890abcdef1234567890"},
+                ],
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                },
+            )
+        )
+        shas = client.list_pr_commits(OWNER, REPO, 1245)
+        assert len(shas) == 3
+        assert shas[0] == "abc123def456789012345678901234567890abcd"
+        assert shas[1] == "def456789012345678901234567890abcdef12"
+        assert shas[2] == "789012345678901234567890abcdef1234567890"
+
+    @respx.mock
+    def test_empty_pr_returns_empty_list(self, client: GitHubClient):
+        respx.get(f"{API}/repos/{OWNER}/{REPO}/pulls/1/commits").mock(
+            return_value=httpx.Response(
+                200,
+                json=[],
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                },
+            )
+        )
+        shas = client.list_pr_commits(OWNER, REPO, 1)
+        assert shas == []
+
+    @respx.mock
+    def test_404_raises_resource_not_found(self, client: GitHubClient):
+        respx.get(f"{API}/repos/{OWNER}/{REPO}/pulls/9999/commits").mock(
+            return_value=httpx.Response(404, json={"message": "Not Found"})
+        )
+        with pytest.raises(ResourceNotFoundError):
+            client.list_pr_commits(OWNER, REPO, 9999)
+
+    @respx.mock
+    def test_paginates_commits(self, client: GitHubClient):
+        """Test that pagination works for PRs with many commits."""
+        page1_commits = [{"sha": f"sha1_{i:040d}"} for i in range(100)]
+        page2_commits = [{"sha": f"sha2_{i:040d}"} for i in range(50)]
+
+        route = respx.get(f"{API}/repos/{OWNER}/{REPO}/pulls/1/commits")
+        route.side_effect = [
+            httpx.Response(
+                200,
+                json=page1_commits,
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                    "link": f'<{API}/repos/{OWNER}/{REPO}/pulls/1/commits?page=2>; rel="next"',
+                },
+            ),
+            httpx.Response(
+                200,
+                json=page2_commits,
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                },
+            ),
+        ]
+        shas = client.list_pr_commits(OWNER, REPO, 1)
+        assert len(shas) == 150

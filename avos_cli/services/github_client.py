@@ -191,6 +191,69 @@ class GitHubClient:
         except ResourceNotFoundError:
             return False
 
+    def get_pr_diff(self, owner: str, repo: str, pr_number: int) -> str:
+        """Fetch the unified diff for a pull request.
+
+        Uses the GitHub diff media type to get raw unified diff output.
+
+        Args:
+            owner: Repository owner.
+            repo: Repository name.
+            pr_number: Pull request number.
+
+        Returns:
+            Raw unified diff text.
+
+        Raises:
+            ResourceNotFoundError: If the PR does not exist.
+        """
+        url = f"{_API_BASE}/repos/{owner}/{repo}/pulls/{pr_number}"
+        response = self._request_with_retry_diff(url)
+        self._check_response(response)
+        return response.text
+
+    def list_pr_commits(self, owner: str, repo: str, pr_number: int) -> list[str]:
+        """List all commit SHAs in a pull request.
+
+        Fetches the full list of commits (with pagination) and extracts
+        the SHA for each commit.
+
+        Args:
+            owner: Repository owner.
+            repo: Repository name.
+            pr_number: Pull request number.
+
+        Returns:
+            List of full 40-character commit SHAs.
+
+        Raises:
+            ResourceNotFoundError: If the PR does not exist.
+        """
+        url = f"{_API_BASE}/repos/{owner}/{repo}/pulls/{pr_number}/commits"
+        commits = self._paginate(url, {})
+        return [commit["sha"] for commit in commits]
+
+    @retry(
+        retry=retry_if_exception_type(_RetryableGitHubError),
+        stop=stop_after_attempt(_MAX_RETRIES),
+        wait=wait_exponential(multiplier=0.5, min=0.1, max=10),
+        reraise=True,
+    )
+    def _request_with_retry_diff(self, url: str) -> httpx.Response:
+        """Execute GET with diff Accept header and retry on 5xx errors."""
+        try:
+            response = self._client.get(
+                url,
+                headers={"Accept": "application/vnd.github.v3.diff"},
+            )
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            raise _RetryableGitHubError(str(e)) from e
+
+        if response.status_code >= 500:
+            raise _RetryableGitHubError(f"HTTP {response.status_code}")
+
+        return response
+
     def _get(self, url: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Execute a GET request with error handling."""
         response = self._request_with_retry(url, params)
