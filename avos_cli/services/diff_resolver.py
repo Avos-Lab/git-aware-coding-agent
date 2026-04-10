@@ -2,12 +2,11 @@
 
 Implements the PR-Wins deduplication strategy: commits that are part of
 a referenced PR are suppressed to avoid duplicate content. Extracts
-unified diffs from GitHub API (PRs) and local git (commits).
+unified diffs from the GitHub REST API for both PRs and commits.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from avos_cli.exceptions import AvosError
@@ -23,14 +22,13 @@ from avos_cli.models.diff import (
 from avos_cli.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from avos_cli.services.git_client import GitClient
     from avos_cli.services.github_client import GitHubClient
 
 _log = get_logger("diff_resolver")
 
 
 class DiffResolver:
-    """Resolves PR and commit references to unified diffs.
+    """Resolves PR and commit references to unified diffs via GitHub API.
 
     Implements the PR-Wins deduplication strategy:
     1. Build coverage index: map each commit SHA to PRs containing it
@@ -39,20 +37,11 @@ class DiffResolver:
     4. Extract diffs for all kept references
 
     Args:
-        github_client: GitHub REST API client for PR operations.
-        git_client: Local git client for commit operations.
-        repo_path: Path to the local git repository.
+        github_client: GitHub REST API client for PR and commit endpoints.
     """
 
-    def __init__(
-        self,
-        github_client: GitHubClient,
-        git_client: GitClient,
-        repo_path: Path,
-    ) -> None:
+    def __init__(self, github_client: GitHubClient) -> None:
         self._github = github_client
-        self._git = git_client
-        self._repo_path = repo_path
 
     def resolve(self, references: list[ParsedReference]) -> list[DiffResult]:
         """Resolve references to diffs with PR-Wins deduplication.
@@ -134,10 +123,13 @@ class DiffResolver:
                         DedupPlanItem(reference=resolved, decision=DedupDecision.KEEP)
                     )
             else:
-                resolved = self._resolve_commit_reference(ref)
+                resolved, commit_detail = self._resolve_commit_reference(ref)
                 if resolved is None:
                     plan.append(
-                        self._make_unresolved_plan_item(ref, "Commit SHA expansion failed")
+                        self._make_unresolved_plan_item(
+                            ref,
+                            commit_detail or "Commit SHA expansion failed",
+                        )
                     )
                     continue
 
@@ -190,27 +182,38 @@ class DiffResolver:
 
     def _resolve_commit_reference(
         self, ref: ParsedReference
-    ) -> ResolvedReference | None:
+    ) -> tuple[ResolvedReference | None, str | None]:
         """Resolve a commit reference to canonical form with full SHA.
+
+        Uses the GitHub commits API (same as the hosted repo).
 
         Args:
             ref: Parsed commit reference.
 
         Returns:
-            ResolvedReference or None if SHA expansion fails.
+            (resolved, None) on success, or (None, detail) where detail is a
+            short error string (e.g. GitHub API message) when resolution fails.
         """
         if ref.repo_slug is None:
-            return None
+            return None, None
 
-        full_sha = self._git.expand_short_sha(self._repo_path, ref.raw_id)
-        if full_sha is None:
-            return None
+        owner, repo = ref.repo_slug.split("/", 1)
 
-        return ResolvedReference(
-            reference_type=DiffReferenceType.COMMIT,
-            canonical_id=full_sha,
-            repo_slug=ref.repo_slug,
-            full_sha=full_sha,
+        try:
+            payload = self._github.get_commit(owner, repo, ref.raw_id)
+        except AvosError as e:
+            return None, str(e)
+        full_sha = str(payload.get("sha", ""))
+        if len(full_sha) != 40:
+            return None, "Commit response missing full SHA"
+        return (
+            ResolvedReference(
+                reference_type=DiffReferenceType.COMMIT,
+                canonical_id=full_sha,
+                repo_slug=ref.repo_slug,
+                full_sha=full_sha,
+            ),
+            None,
         )
 
     def _make_unresolved_plan_item(
@@ -267,7 +270,7 @@ class DiffResolver:
                 error_message="Repository context unknown",
             )
 
-        if plan_item.reason and "failed" in plan_item.reason.lower():
+        if plan_item.decision == DedupDecision.KEEP and plan_item.reason:
             return DiffResult(
                 reference_type=ref.reference_type,
                 canonical_id=ref.canonical_id,
@@ -278,8 +281,7 @@ class DiffResolver:
 
         if ref.reference_type == DiffReferenceType.PR:
             return self._extract_pr_diff(ref)
-        else:
-            return self._extract_commit_diff(ref)
+        return self._extract_commit_diff(ref)
 
     def _extract_pr_diff(self, ref: ResolvedReference) -> DiffResult:
         """Extract diff for a PR reference.
@@ -320,7 +322,7 @@ class DiffResolver:
             )
 
     def _extract_commit_diff(self, ref: ResolvedReference) -> DiffResult:
-        """Extract diff for a commit reference.
+        """Extract diff for a commit reference via GitHub commits API.
 
         Args:
             ref: Resolved commit reference.
@@ -337,17 +339,18 @@ class DiffResolver:
                 error_message="Commit SHA not resolved",
             )
 
+        owner, repo = ref.repo_slug.split("/", 1)
+
         try:
-            diff_text = self._git.commit_patch(self._repo_path, ref.full_sha)
+            diff_text = self._github.get_commit_diff(owner, repo, ref.full_sha)
             if not diff_text:
                 return DiffResult(
                     reference_type=ref.reference_type,
                     canonical_id=ref.canonical_id,
                     repo=ref.repo_slug,
                     status=DiffStatus.UNRESOLVED,
-                    error_message="Commit not found or has no diff",
+                    error_message="Commit has no diff (empty response)",
                 )
-
             return DiffResult(
                 reference_type=ref.reference_type,
                 canonical_id=ref.canonical_id,

@@ -1,7 +1,7 @@
 """CLI entry point for the avos command.
 
-Thin layer: parses arguments, resolves credentials from environment,
-instantiates services, and delegates to orchestrators.
+Thin layer: parses arguments, resolves credentials from the environment,
+connected repo config (with env overlay), and delegates to orchestrators.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import typer
 
 from avos_cli import __version__
+from avos_cli.exceptions import AuthError
 from avos_cli.utils.dotenv_load import load_layers
 from avos_cli.utils.output import print_error
 
@@ -45,6 +46,20 @@ def _first_env(*keys: str) -> str:
         if v and isinstance(v, str):
             return v.strip()
     return ""
+
+
+def _github_client_or_exit(repo_root: Path):
+    """Resolve GitHub client from connected config (overlay) and env; exit if missing."""
+    from avos_cli.services.github_client import github_client_for_repo
+
+    try:
+        return github_client_for_repo(repo_root)
+    except AuthError:
+        print_error(
+            "[AUTH_ERROR] GitHub token is required. Set GITHUB_TOKEN or use a layered .env; "
+            "it is not written to .avos/config.json."
+        )
+        raise typer.Exit(1) from None
 
 
 def _make_reply_service() -> ReplyOutputService | None:
@@ -109,20 +124,15 @@ def connect(
     from avos_cli.config.manager import find_repo_root
     from avos_cli.exceptions import RepositoryContextError
     from avos_cli.services.git_client import GitClient
-    from avos_cli.services.github_client import GitHubClient
     from avos_cli.services.memory_client import AvosMemoryClient
 
     json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
-    github_token = os.environ.get("GITHUB_TOKEN", "")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
-        raise typer.Exit(1)
-    if not github_token:
-        print_error("[AUTH_ERROR] GITHUB_TOKEN environment variable is required.")
         raise typer.Exit(1)
 
     try:
@@ -131,9 +141,11 @@ def connect(
         print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
         raise typer.Exit(1) from e
 
+    gh_client = _github_client_or_exit(repo_root)
+
     orchestrator = ConnectOrchestrator(
         git_client=GitClient(),
-        github_client=GitHubClient(token=github_token),
+        github_client=gh_client,
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         repo_root=repo_root,
     )
@@ -168,7 +180,6 @@ def ingest(
     from avos_cli.config.manager import find_repo_root
     from avos_cli.exceptions import RepositoryContextError
     from avos_cli.services.git_client import GitClient
-    from avos_cli.services.github_client import GitHubClient
     from avos_cli.services.memory_client import AvosMemoryClient
 
     json_output = ctx.obj.get("json", False)
@@ -176,13 +187,9 @@ def ingest(
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
-    github_token = os.environ.get("GITHUB_TOKEN", "")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
-        raise typer.Exit(1)
-    if not github_token:
-        print_error("[AUTH_ERROR] GITHUB_TOKEN environment variable is required.")
         raise typer.Exit(1)
 
     try:
@@ -191,13 +198,15 @@ def ingest(
         print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
         raise typer.Exit(1) from e
 
+    gh_client = _github_client_or_exit(repo_root)
+
     avos_dir = repo_root / ".avos"
     hash_store = IngestHashStore(avos_dir)
     hash_store.load()
 
     orchestrator = IngestOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
-        github_client=GitHubClient(token=github_token),
+        github_client=gh_client,
         git_client=GitClient(),
         hash_store=hash_store,
         lock_manager=IngestLockManager(avos_dir),
@@ -218,20 +227,15 @@ def ingest_pr(
     from avos_cli.config.hash_store import IngestHashStore
     from avos_cli.config.manager import find_repo_root
     from avos_cli.exceptions import RepositoryContextError
-    from avos_cli.services.github_client import GitHubClient
     from avos_cli.services.memory_client import AvosMemoryClient
 
     json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
     api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
-    github_token = os.environ.get("GITHUB_TOKEN", "")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
-        raise typer.Exit(1)
-    if not github_token:
-        print_error("[AUTH_ERROR] GITHUB_TOKEN environment variable is required.")
         raise typer.Exit(1)
 
     try:
@@ -240,13 +244,15 @@ def ingest_pr(
         print_error(f"[REPOSITORY_CONTEXT_ERROR] {e}")
         raise typer.Exit(1) from e
 
+    gh_client = _github_client_or_exit(repo_root)
+
     avos_dir = repo_root / ".avos"
     hash_store = IngestHashStore(avos_dir)
     hash_store.load()
 
     orchestrator = IngestPROrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
-        github_client=GitHubClient(token=github_token),
+        github_client=gh_client,
         hash_store=hash_store,
         repo_root=repo_root,
     )

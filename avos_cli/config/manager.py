@@ -89,6 +89,29 @@ def load_config(repo_root: Path) -> RepoConfig:
         ) from e
 
 
+def connected_repo_slug(repo_root: Path) -> str | None:
+    """Return the repository slug persisted by ``avos connect`` (authoritative context).
+
+    After a successful connect, ``repo`` in ``.avos/config.json`` is the
+    canonical ``org/repo`` for this working copy. Pass it as ``default_repo``
+    to :class:`~avos_cli.parsers.reference_parser.ReferenceParser` when the
+    user omits owner/repo (e.g. ``PR #1245``, ``Commit 8c3a1b2``).
+
+    Args:
+        repo_root: Git repository root containing ``.avos/config.json``.
+
+    Returns:
+        Connected slug, or ``None`` if the project was never connected.
+
+    Raises:
+        ConfigurationValidationError: If the config file exists but is invalid.
+    """
+    try:
+        return load_config(repo_root).repo
+    except ConfigurationNotInitializedError:
+        return None
+
+
 def _apply_env_overlay(data: dict[str, Any]) -> None:
     """Apply environment variable overrides to config data dict.
 

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from freezegun import freeze_time
 
+from avos_cli.utils.dotenv_load import repository_root_env_path
 from avos_cli.utils.hashing import content_hash
 from avos_cli.utils.logger import RedactionFilter, get_logger
 from avos_cli.utils.time_helpers import days_ago, is_within_ttl, parse_iso8601
@@ -147,3 +148,11 @@ class TestGetLogger:
         logger = get_logger("test_redaction")
         has_redaction = any(isinstance(f, RedactionFilter) for f in logger.filters)
         assert has_redaction
+
+
+class TestRepositoryRootEnvPath:
+    """``repository_root_env_path`` points at root ``.env`` beside ``avos_cli``."""
+
+    def test_basename_is_dotenv(self):
+        path = repository_root_env_path()
+        assert path.name == ".env"

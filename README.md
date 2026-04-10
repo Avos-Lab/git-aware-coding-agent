@@ -1,12 +1,12 @@
-# avos-dev-cli
+# git-aware-coding-agent
 
 **Git history for AI agents.**
 
 <p align="center">
-  <img src="docs/assets/avos-dev-cli.gif" alt="Avos CLI demo" width="100%" />
+  <img src="docs/assets/git-aware-coding-agent.gif" alt="git-aware-coding-agent demo" width="100%" />
 </p>
 
-**Demo:** [docs/assets/avos-dev-cli.gif](docs/assets/avos-dev-cli.gif)
+**Demo:** [docs/assets/git-aware-coding-agent.gif](docs/assets/git-aware-coding-agent.gif)
 
 Avos gives AI coding agents persistent, queryable memory so they can remember **why code exists**, **what decisions shaped it**, and **how it was built** — before they modify it.
 
@@ -47,7 +47,7 @@ Works with **Claude Code**, **Cursor**, and the **terminal**. Python 3.10+. Apac
 
 ```bash
 # Install
-pip install avos-dev-cli
+pip install git-aware-coding-agent
 
 # Set credentials
 export AVOS_API_KEY="your-key"
@@ -292,8 +292,8 @@ avos_cli/
 ## Development
 
 ```bash
-git clone https://github.com/Avos-Lab/avos-dev-cli.git
-cd avos-dev-cli
+git clone https://github.com/Avos-Lab/git-aware-coding-agent.git
+cd git-aware-coding-agent
 pip install -e ".[dev]"
 
 # Run tests

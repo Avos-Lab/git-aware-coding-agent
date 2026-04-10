@@ -1,8 +1,8 @@
 """Integration tests for the git diff pipeline.
 
 Tests the full pipeline from raw reference strings through parsing,
-deduplication, and diff extraction. Uses mocked GitHub API and
-real temporary git repos.
+deduplication, and diff extraction. Uses mocked GitHub API; local git
+is only used to produce realistic commit SHAs in tests.
 """
 
 from __future__ import annotations
@@ -22,6 +22,32 @@ from avos_cli.services.github_client import GitHubClient
 
 TOKEN = "ghp_test_token_12345"
 API = "https://api.github.com"
+_RATE_HEADERS = {"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"}
+
+
+def _register_commit_resolution_and_diff(
+    owner: str,
+    repo: str,
+    short_ref: str,
+    full_sha: str,
+    diff_text: str,
+) -> None:
+    """Mock GitHub JSON lookup by ref and unified diff for full SHA."""
+    base = f"{API}/repos/{owner}/{repo}/commits"
+    respx.get(f"{base}/{short_ref}").mock(
+        return_value=httpx.Response(
+            200,
+            json={"sha": full_sha},
+            headers=_RATE_HEADERS,
+        )
+    )
+    respx.get(f"{base}/{full_sha}").mock(
+        return_value=httpx.Response(
+            200,
+            text=diff_text,
+            headers=_RATE_HEADERS,
+        )
+    )
 
 
 @pytest.fixture()
@@ -32,32 +58,42 @@ def git_repo(tmp_path: Path) -> Path:
     subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"],
-        cwd=repo, capture_output=True, check=True,
+        cwd=repo,
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test User"],
-        cwd=repo, capture_output=True, check=True,
+        cwd=repo,
+        capture_output=True,
+        check=True,
     )
 
     (repo / "README.md").write_text("# Test Project")
     subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
     subprocess.run(
         ["git", "commit", "-m", "Initial commit"],
-        cwd=repo, capture_output=True, check=True,
+        cwd=repo,
+        capture_output=True,
+        check=True,
     )
 
     (repo / "feature.py").write_text("def feature():\n    pass\n")
     subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
     subprocess.run(
         ["git", "commit", "-m", "Add feature"],
-        cwd=repo, capture_output=True, check=True,
+        cwd=repo,
+        capture_output=True,
+        check=True,
     )
 
     (repo / "bugfix.py").write_text("def bugfix():\n    return True\n")
     subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
     subprocess.run(
         ["git", "commit", "-m", "Add bugfix"],
-        cwd=repo, capture_output=True, check=True,
+        cwd=repo,
+        capture_output=True,
+        check=True,
     )
 
     return repo
@@ -98,15 +134,32 @@ class TestFullPipeline:
             return_value=httpx.Response(
                 200,
                 json=[{"sha": feature_sha}],
-                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+                headers=_RATE_HEADERS,
             )
         )
         respx.get(f"{API}/repos/org/repo/pulls/1245").mock(
             return_value=httpx.Response(
                 200,
                 text="diff --git a/feature.py b/feature.py\n+def feature():\n+    pass\n",
-                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+                headers=_RATE_HEADERS,
             )
+        )
+
+        base = f"{API}/repos/org/repo/commits"
+        respx.get(f"{base}/{feature_sha[:7]}").mock(
+            return_value=httpx.Response(
+                200,
+                json={"sha": feature_sha},
+                headers=_RATE_HEADERS,
+            )
+        )
+
+        _register_commit_resolution_and_diff(
+            "org",
+            "repo",
+            bugfix_sha[:7],
+            bugfix_sha,
+            "diff --git a/bugfix.py b/bugfix.py\n+def bugfix():\n+    return True\n",
         )
 
         raw_refs = [
@@ -117,32 +170,30 @@ class TestFullPipeline:
         parsed = parser.parse_all(raw_refs, default_repo="org/repo")
         assert len(parsed) == 3
 
-        resolver = DiffResolver(
-            github_client=github_client,
-            git_client=git_client,
-            repo_path=git_repo,
-        )
+        resolver = DiffResolver(github_client=github_client)
         results = resolver.resolve(parsed)
 
         assert len(results) == 3
 
         pr_result = next(r for r in results if r.reference_type == DiffReferenceType.PR)
         assert pr_result.status == DiffStatus.RESOLVED
-        assert "feature.py" in pr_result.diff_text
+        assert "feature.py" in (pr_result.diff_text or "")
 
         feature_result = next(
-            r for r in results
+            r
+            for r in results
             if r.reference_type == DiffReferenceType.COMMIT and feature_sha in r.canonical_id
         )
         assert feature_result.status == DiffStatus.SUPPRESSED
         assert "covered_by_pr:1245" in feature_result.suppressed_reason
 
         bugfix_result = next(
-            r for r in results
+            r
+            for r in results
             if r.reference_type == DiffReferenceType.COMMIT and bugfix_sha in r.canonical_id
         )
         assert bugfix_result.status == DiffStatus.RESOLVED
-        assert "bugfix.py" in bugfix_result.diff_text
+        assert "bugfix.py" in (bugfix_result.diff_text or "")
 
     @respx.mock
     def test_multiple_prs_with_shared_commit(
@@ -160,39 +211,44 @@ class TestFullPipeline:
             return_value=httpx.Response(
                 200,
                 json=[{"sha": shared_sha}],
-                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+                headers=_RATE_HEADERS,
             )
         )
         respx.get(f"{API}/repos/org/repo/pulls/200/commits").mock(
             return_value=httpx.Response(
                 200,
                 json=[{"sha": shared_sha}],
-                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+                headers=_RATE_HEADERS,
             )
         )
         respx.get(f"{API}/repos/org/repo/pulls/100").mock(
             return_value=httpx.Response(
                 200,
                 text="diff from PR 100",
-                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+                headers=_RATE_HEADERS,
             )
         )
         respx.get(f"{API}/repos/org/repo/pulls/200").mock(
             return_value=httpx.Response(
                 200,
                 text="diff from PR 200",
-                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+                headers=_RATE_HEADERS,
+            )
+        )
+
+        base = f"{API}/repos/org/repo/commits"
+        respx.get(f"{base}/{shared_sha[:7]}").mock(
+            return_value=httpx.Response(
+                200,
+                json={"sha": shared_sha},
+                headers=_RATE_HEADERS,
             )
         )
 
         raw_refs = ["PR #100", "PR #200", f"Commit {shared_sha[:7]}"]
         parsed = parser.parse_all(raw_refs, default_repo="org/repo")
 
-        resolver = DiffResolver(
-            github_client=github_client,
-            git_client=git_client,
-            repo_path=git_repo,
-        )
+        resolver = DiffResolver(github_client=github_client)
         results = resolver.resolve(parsed)
 
         assert len(results) == 3
@@ -219,14 +275,25 @@ class TestFullPipeline:
         sha1 = commits[0]["hash"]
         sha2 = commits[1]["hash"]
 
+        _register_commit_resolution_and_diff(
+            "org",
+            "repo",
+            sha1[:7],
+            sha1,
+            "diff --git a/a.py b/a.py\n+1\n",
+        )
+        _register_commit_resolution_and_diff(
+            "org",
+            "repo",
+            sha2[:7],
+            sha2,
+            "diff --git a/b.py b/b.py\n+2\n",
+        )
+
         raw_refs = [f"Commit {sha1[:7]}", f"Commit {sha2[:7]}"]
         parsed = parser.parse_all(raw_refs, default_repo="org/repo")
 
-        resolver = DiffResolver(
-            github_client=github_client,
-            git_client=git_client,
-            repo_path=git_repo,
-        )
+        resolver = DiffResolver(github_client=github_client)
         results = resolver.resolve(parsed)
 
         assert len(results) == 2
@@ -249,25 +316,29 @@ class TestFullPipeline:
             return_value=httpx.Response(
                 200,
                 json=[{"sha": sha}],
-                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+                headers=_RATE_HEADERS,
             )
         )
         respx.get(f"{API}/repos/org/repo/pulls/1").mock(
             return_value=httpx.Response(
                 200,
                 text="diff --git a/file.py b/file.py\n+content",
-                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+                headers=_RATE_HEADERS,
+            )
+        )
+
+        respx.get(f"{API}/repos/org/repo/commits/{sha[:7]}").mock(
+            return_value=httpx.Response(
+                200,
+                json={"sha": sha},
+                headers=_RATE_HEADERS,
             )
         )
 
         raw_refs = ["PR #1", f"Commit {sha[:7]}"]
         parsed = parser.parse_all(raw_refs, default_repo="org/repo")
 
-        resolver = DiffResolver(
-            github_client=github_client,
-            git_client=git_client,
-            repo_path=git_repo,
-        )
+        resolver = DiffResolver(github_client=github_client)
         results = resolver.resolve(parsed)
         output = resolver.format_output(results)
 
@@ -282,8 +353,6 @@ class TestEdgeCases:
     @respx.mock
     def test_pr_with_no_commits(
         self,
-        git_repo: Path,
-        git_client: GitClient,
         github_client: GitHubClient,
         parser: ReferenceParser,
     ):
@@ -292,47 +361,46 @@ class TestEdgeCases:
             return_value=httpx.Response(
                 200,
                 json=[],
-                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+                headers=_RATE_HEADERS,
             )
         )
         respx.get(f"{API}/repos/org/repo/pulls/1").mock(
             return_value=httpx.Response(
                 200,
                 text="",
-                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+                headers=_RATE_HEADERS,
             )
         )
 
         raw_refs = ["PR #1"]
         parsed = parser.parse_all(raw_refs, default_repo="org/repo")
 
-        resolver = DiffResolver(
-            github_client=github_client,
-            git_client=git_client,
-            repo_path=git_repo,
-        )
+        resolver = DiffResolver(github_client=github_client)
         results = resolver.resolve(parsed)
 
         assert len(results) == 1
         assert results[0].status == DiffStatus.RESOLVED
         assert results[0].diff_text == ""
 
+    @respx.mock
     def test_invalid_commit_sha(
         self,
-        git_repo: Path,
-        git_client: GitClient,
         github_client: GitHubClient,
         parser: ReferenceParser,
     ):
-        """Test handling of invalid commit SHA."""
+        """Test handling of invalid commit SHA (GitHub 404)."""
+        respx.get(f"{API}/repos/org/repo/commits/0000000").mock(
+            return_value=httpx.Response(
+                404,
+                json={"message": "Not Found"},
+                headers=_RATE_HEADERS,
+            )
+        )
+
         raw_refs = ["Commit 0000000"]
         parsed = parser.parse_all(raw_refs, default_repo="org/repo")
 
-        resolver = DiffResolver(
-            github_client=github_client,
-            git_client=git_client,
-            repo_path=git_repo,
-        )
+        resolver = DiffResolver(github_client=github_client)
         results = resolver.resolve(parsed)
 
         assert len(results) == 1
@@ -342,7 +410,6 @@ class TestEdgeCases:
         self,
         git_repo: Path,
         git_client: GitClient,
-        github_client: GitHubClient,
         parser: ReferenceParser,
     ):
         """Test references with different repo contexts."""

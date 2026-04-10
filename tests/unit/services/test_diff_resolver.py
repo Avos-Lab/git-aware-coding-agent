@@ -1,12 +1,12 @@
 """Tests for DiffResolver.
 
 Covers coverage index building, PR-Wins deduplication logic,
-patch extraction orchestration, and error handling.
+patch extraction orchestration, and error handling. All commit
+resolution and diffs use the GitHub API only.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,17 +26,12 @@ def mock_github_client() -> MagicMock:
 
 
 @pytest.fixture()
-def mock_git_client() -> MagicMock:
-    return MagicMock()
+def resolver(mock_github_client: MagicMock) -> DiffResolver:
+    return DiffResolver(github_client=mock_github_client)
 
 
-@pytest.fixture()
-def resolver(mock_github_client: MagicMock, mock_git_client: MagicMock) -> DiffResolver:
-    return DiffResolver(
-        github_client=mock_github_client,
-        git_client=mock_git_client,
-        repo_path=Path("/tmp/repo"),
-    )
+def _commit_json(full_sha: str) -> dict[str, str]:
+    return {"sha": full_sha}
 
 
 class TestBuildCoverageIndex:
@@ -139,12 +134,11 @@ class TestApplyDedup:
         assert plan[0].decision == DedupDecision.KEEP
 
     def test_commit_covered_by_pr_suppressed(
-        self, resolver: DiffResolver, mock_git_client: MagicMock
+        self, resolver: DiffResolver, mock_github_client: MagicMock
     ):
         """Test that commit covered by a PR is suppressed."""
-        mock_git_client.expand_short_sha.return_value = (
-            "abc123def456789012345678901234567890abcd"
-        )
+        full = "abc123def456789012345678901234567890abcd"
+        mock_github_client.get_commit.return_value = _commit_json(full)
 
         commit_ref = ParsedReference(
             reference_type=DiffReferenceType.COMMIT,
@@ -152,7 +146,7 @@ class TestApplyDedup:
             repo_slug="org/repo",
         )
 
-        coverage_index = {"abc123def456789012345678901234567890abcd": {1245}}
+        coverage_index = {full: {1245}}
 
         plan = resolver._apply_dedup([commit_ref], coverage_index)
 
@@ -161,12 +155,11 @@ class TestApplyDedup:
         assert plan[0].covered_by_pr == 1245
 
     def test_commit_not_covered_kept(
-        self, resolver: DiffResolver, mock_git_client: MagicMock
+        self, resolver: DiffResolver, mock_github_client: MagicMock
     ):
         """Test that commit not covered by any PR is kept."""
-        mock_git_client.expand_short_sha.return_value = (
-            "xyz789def456789012345678901234567890abcd"
-        )
+        full = "xyz789def456789012345678901234567890abcd"
+        mock_github_client.get_commit.return_value = _commit_json(full)
 
         commit_ref = ParsedReference(
             reference_type=DiffReferenceType.COMMIT,
@@ -182,12 +175,11 @@ class TestApplyDedup:
         assert plan[0].decision == DedupDecision.KEEP
 
     def test_commit_covered_by_multiple_prs(
-        self, resolver: DiffResolver, mock_git_client: MagicMock
+        self, resolver: DiffResolver, mock_github_client: MagicMock
     ):
         """Test commit covered by multiple PRs picks first PR."""
-        mock_git_client.expand_short_sha.return_value = (
-            "abc123def456789012345678901234567890abcd"
-        )
+        full = "abc123def456789012345678901234567890abcd"
+        mock_github_client.get_commit.return_value = _commit_json(full)
 
         commit_ref = ParsedReference(
             reference_type=DiffReferenceType.COMMIT,
@@ -195,12 +187,12 @@ class TestApplyDedup:
             repo_slug="org/repo",
         )
 
-        coverage_index = {"abc123def456789012345678901234567890abcd": {100, 200, 300}}
+        coverage_index = {full: {100, 200, 300}}
 
         plan = resolver._apply_dedup([commit_ref], coverage_index)
 
         assert plan[0].decision == DedupDecision.SUPPRESS_COVERED_BY_PR
-        assert plan[0].covered_by_pr in {100, 200, 300}
+        assert plan[0].covered_by_pr == 100
 
 
 class TestExtractDiff:
@@ -229,10 +221,12 @@ class TestExtractDiff:
         assert result.canonical_id == "PR #1245"
 
     def test_extract_commit_diff(
-        self, resolver: DiffResolver, mock_git_client: MagicMock
+        self, resolver: DiffResolver, mock_github_client: MagicMock
     ):
-        """Test extracting diff for a commit reference."""
-        mock_git_client.commit_patch.return_value = "diff --git a/file.py b/file.py\n-old\n+new"
+        """Test extracting diff for a commit reference via GitHub API."""
+        mock_github_client.get_commit_diff.return_value = (
+            "diff --git a/file.py b/file.py\n-old\n+new"
+        )
 
         from avos_cli.models.diff import DedupPlanItem, ResolvedReference
 
@@ -247,7 +241,7 @@ class TestExtractDiff:
         result = resolver._extract_diff(plan_item)
 
         assert result.status == DiffStatus.RESOLVED
-        assert "diff --git" in result.diff_text
+        assert "diff --git" in (result.diff_text or "")
 
     def test_extract_suppressed_commit(self, resolver: DiffResolver):
         """Test that suppressed commits return suppressed status."""
@@ -298,13 +292,12 @@ class TestResolve:
         assert results[0].canonical_id == "PR #1245"
 
     def test_resolve_single_commit(
-        self, resolver: DiffResolver, mock_git_client: MagicMock
+        self, resolver: DiffResolver, mock_github_client: MagicMock
     ):
         """Test resolving a single commit reference."""
-        mock_git_client.expand_short_sha.return_value = (
-            "abc123def456789012345678901234567890abcd"
-        )
-        mock_git_client.commit_patch.return_value = "diff content"
+        full = "abc123def456789012345678901234567890abcd"
+        mock_github_client.get_commit.return_value = _commit_json(full)
+        mock_github_client.get_commit_diff.return_value = "diff content"
 
         refs = [
             ParsedReference(
@@ -318,21 +311,17 @@ class TestResolve:
 
         assert len(results) == 1
         assert results[0].status == DiffStatus.RESOLVED
+        mock_github_client.get_commit.assert_called_once()
+        mock_github_client.get_commit_diff.assert_called_once_with("org", "repo", full)
 
     def test_resolve_pr_and_overlapping_commit(
-        self,
-        resolver: DiffResolver,
-        mock_github_client: MagicMock,
-        mock_git_client: MagicMock,
+        self, resolver: DiffResolver, mock_github_client: MagicMock
     ):
         """Test PR-Wins: commit covered by PR is suppressed."""
-        mock_github_client.list_pr_commits.return_value = [
-            "abc123def456789012345678901234567890abcd"
-        ]
+        full = "abc123def456789012345678901234567890abcd"
+        mock_github_client.list_pr_commits.return_value = [full]
         mock_github_client.get_pr_diff.return_value = "pr diff"
-        mock_git_client.expand_short_sha.return_value = (
-            "abc123def456789012345678901234567890abcd"
-        )
+        mock_github_client.get_commit.return_value = _commit_json(full)
 
         refs = [
             ParsedReference(
@@ -357,20 +346,18 @@ class TestResolve:
 
         assert pr_result.status == DiffStatus.RESOLVED
         assert commit_result.status == DiffStatus.SUPPRESSED
+        mock_github_client.get_commit_diff.assert_not_called()
 
     def test_resolve_pr_and_independent_commit(
-        self,
-        resolver: DiffResolver,
-        mock_github_client: MagicMock,
-        mock_git_client: MagicMock,
+        self, resolver: DiffResolver, mock_github_client: MagicMock
     ):
         """Test that independent commit is kept."""
-        mock_github_client.list_pr_commits.return_value = ["sha_in_pr"]
+        sha_in_pr = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        indep_full = "cccccccccccccccccccccccccccccccccccccccc"
+        mock_github_client.list_pr_commits.return_value = [sha_in_pr]
         mock_github_client.get_pr_diff.return_value = "pr diff"
-        mock_git_client.expand_short_sha.return_value = (
-            "independent_sha_not_in_pr_padding"
-        )
-        mock_git_client.commit_patch.return_value = "commit diff"
+        mock_github_client.get_commit.return_value = _commit_json(indep_full)
+        mock_github_client.get_commit_diff.return_value = "commit diff"
 
         refs = [
             ParsedReference(
@@ -380,7 +367,7 @@ class TestResolve:
             ),
             ParsedReference(
                 reference_type=DiffReferenceType.COMMIT,
-                raw_id="indepen",
+                raw_id="ccccccc",
                 repo_slug="org/repo",
             ),
         ]
@@ -426,11 +413,13 @@ class TestErrorHandling:
         assert results[0].status == DiffStatus.UNRESOLVED
         assert results[0].error_message is not None
 
-    def test_commit_sha_expansion_fails(
-        self, resolver: DiffResolver, mock_git_client: MagicMock
+    def test_commit_sha_resolution_fails(
+        self, resolver: DiffResolver, mock_github_client: MagicMock
     ):
-        """Test that failed SHA expansion returns unresolved."""
-        mock_git_client.expand_short_sha.return_value = None
+        """Test that failed GitHub commit lookup returns unresolved."""
+        from avos_cli.exceptions import ResourceNotFoundError
+
+        mock_github_client.get_commit.side_effect = ResourceNotFoundError("missing")
 
         refs = [
             ParsedReference(

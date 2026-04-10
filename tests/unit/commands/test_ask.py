@@ -289,13 +289,15 @@ class TestAdditionalCoverageBranches:
         out = capsys.readouterr().out
         assert "AUTH_ERROR" in out
 
-    def test_sanitization_safety_block_fallback_branch(self):
+    def test_sanitization_safety_block_fallback_branch(self, capsys):
         mc = MagicMock()
         mc.search.return_value = _make_search_result(2)
         orch = _make_orchestrator(memory_client=mc, llm_client=MagicMock())
         orch._sanitizer.sanitize = MagicMock(
             return_value=MagicMock(
                 confidence_score=10,
+                redaction_applied=True,
+                redaction_types=["token"],
                 artifacts=[
                     SanitizedArtifact(
                         note_id="n1",
@@ -313,6 +315,11 @@ class TestAdditionalCoverageBranches:
             )
             code = orch.run("org/repo", "question")
         assert code == 0
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert "10/100" in combined
+        assert "70" in combined
+        assert "GitHub PAT" in combined or "token" in combined.lower()
 
     def test_budget_exhausted_fallback_branch(self):
         mc = MagicMock()

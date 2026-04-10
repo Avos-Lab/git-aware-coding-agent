@@ -11,7 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from avos_cli.config.manager import find_repo_root, load_config, save_config
+from avos_cli.config.manager import (
+    connected_repo_slug,
+    find_repo_root,
+    load_config,
+    save_config,
+)
 from avos_cli.config.state import atomic_write, read_json_safe
 from avos_cli.exceptions import (
     ConfigurationNotInitializedError,
@@ -172,6 +177,19 @@ class TestLoadConfig:
 
         cfg = load_config(avos_dir.parent)
         assert cfg.llm.provider == "openai"
+
+
+class TestConnectedRepoSlug:
+    def test_returns_repo_when_connected(
+        self, avos_dir: Path, valid_config_data: dict, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.delenv("AVOS_API_KEY", raising=False)
+        monkeypatch.delenv("AVOS_API_URL", raising=False)
+        (avos_dir / "config.json").write_text(json.dumps(valid_config_data))
+        assert connected_repo_slug(avos_dir.parent) == "org/repo"
+
+    def test_returns_none_when_not_connected(self, git_repo: Path):
+        assert connected_repo_slug(git_repo) is None
 
 
 class TestSaveConfig:

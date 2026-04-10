@@ -289,10 +289,6 @@ class TestRepoSlugParsing:
         code = orchestrator.run("invalid-no-slash")
         assert code == 1
 
-    def test_empty_slug_returns_1(self, orchestrator: ConnectOrchestrator):
-        code = orchestrator.run("")
-        assert code == 1
-
 
 class TestInferSlugFromOrigin:
     """When repo slug is omitted, connect derives org/repo from origin."""
@@ -301,6 +297,19 @@ class TestInferSlugFromOrigin:
         self, orchestrator: ConnectOrchestrator, git_repo: Path
     ):
         code = orchestrator.run(None)
+        assert code == 0
+        data = json.loads((git_repo / ".avos" / "config.json").read_text())
+        assert data["repo"] == "myorg/myrepo"
+
+    @pytest.mark.parametrize("blank", ["", "   ", "\t\n "])
+    def test_blank_slug_infers_like_omitted(
+        self,
+        blank: str,
+        orchestrator: ConnectOrchestrator,
+        git_repo: Path,
+    ):
+        """Empty or whitespace-only CLI slug uses origin like ``None``."""
+        code = orchestrator.run(blank)
         assert code == 0
         data = json.loads((git_repo / ".avos" / "config.json").read_text())
         assert data["repo"] == "myorg/myrepo"
@@ -323,6 +332,14 @@ class TestInferSlugFromOrigin:
     ):
         mock_git_client.remote_origin.return_value = None
         code = orchestrator.run(None)
+        assert code == 1
+
+    def test_whitespace_slug_no_origin_returns_1(
+        self, orchestrator: ConnectOrchestrator, mock_git_client: MagicMock
+    ):
+        """Blank slug must not report invalid format when infer fails."""
+        mock_git_client.remote_origin.return_value = None
+        code = orchestrator.run("  \t  ")
         assert code == 1
 
     def test_none_slug_git_error_returns_1(

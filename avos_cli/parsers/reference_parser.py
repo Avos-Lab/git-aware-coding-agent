@@ -56,6 +56,7 @@ class ReferenceParser:
         Args:
             raw: The raw reference string to parse.
             default_repo: Default repository slug if not specified in reference.
+                After ``avos connect``, use :func:`~avos_cli.config.manager.connected_repo_slug`.
 
         Returns:
             ParsedReference if successfully parsed, None otherwise.
@@ -103,6 +104,7 @@ class ReferenceParser:
         Args:
             raw_list: List of raw reference strings to parse.
             default_repo: Default repository slug if not specified.
+                After ``avos connect``, use :func:`~avos_cli.config.manager.connected_repo_slug`.
 
         Returns:
             List of successfully parsed references (invalid ones are skipped).

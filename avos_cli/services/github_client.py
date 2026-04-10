@@ -7,8 +7,10 @@ for transient 5xx errors.
 
 from __future__ import annotations
 
+import os
 import re
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -21,15 +23,26 @@ from tenacity import (
 
 from avos_cli.exceptions import (
     AuthError,
+    ConfigurationNotInitializedError,
     RateLimitError,
     ResourceNotFoundError,
     UpstreamUnavailableError,
 )
+from avos_cli.utils.dotenv_load import load_layers
 from avos_cli.utils.logger import get_logger
 
 _log = get_logger("github_client")
 
 _API_BASE = "https://api.github.com"
+_dotenv_loaded_for_github = False
+
+
+def _ensure_dotenv_for_github() -> None:
+    """Load layered ``.env`` once so ``GITHUB_TOKEN`` from repo root is visible."""
+    global _dotenv_loaded_for_github
+    if not _dotenv_loaded_for_github:
+        load_layers()
+        _dotenv_loaded_for_github = True
 _TIMEOUT = 30.0
 _MAX_RETRIES = 3
 _MAX_PAGES = 100
@@ -46,16 +59,25 @@ class GitHubClient:
     with pagination, rate limit handling, and typed error mapping.
 
     Args:
-        token: GitHub personal access token.
+        token: GitHub personal access token. If omitted, uses ``GITHUB_TOKEN``
+            from the environment after loading layered ``.env`` files (including
+            the repository root ``.env``). Pass ``""`` explicitly to require a
+            non-empty token and ignore the environment.
     """
 
-    def __init__(self, token: str) -> None:
-        if not token:
+    def __init__(self, token: str | None = None) -> None:
+        _ensure_dotenv_for_github()
+        resolved = (
+            os.environ.get("GITHUB_TOKEN", "").strip()
+            if token is None
+            else token.strip()
+        )
+        if not resolved:
             raise AuthError("GitHub token is required", service="GitHub")
-        self._token = token
+        self._token = resolved
         self._client = httpx.Client(
             headers={
-                "Authorization": f"Bearer {token}",
+                "Authorization": f"Bearer {resolved}",
                 "Accept": "application/vnd.github.v3+json",
             },
             timeout=_TIMEOUT,
@@ -233,6 +255,45 @@ class GitHubClient:
         commits = self._paginate(url, {})
         return [commit["sha"] for commit in commits]
 
+    def get_commit(self, owner: str, repo: str, commit_ref: str) -> dict[str, Any]:
+        """Fetch a single commit as JSON (includes full SHA).
+
+        Args:
+            owner: Repository owner.
+            repo: Repository name.
+            commit_ref: Commit SHA (short or full), branch, or tag.
+
+        Returns:
+            GitHub commit object dict.
+
+        Raises:
+            ResourceNotFoundError: If the commit does not exist.
+        """
+        url = f"{_API_BASE}/repos/{owner}/{repo}/commits/{commit_ref}"
+        return self._get(url)
+
+    def get_commit_diff(self, owner: str, repo: str, commit_ref: str) -> str:
+        """Fetch the unified diff for a commit (parent..commit).
+
+        Uses the GitHub diff media type on the commits endpoint. No local
+        git is required.
+
+        Args:
+            owner: Repository owner.
+            repo: Repository name.
+            commit_ref: Commit SHA (short or full), branch, or tag.
+
+        Returns:
+            Raw unified diff text.
+
+        Raises:
+            ResourceNotFoundError: If the commit does not exist.
+        """
+        url = f"{_API_BASE}/repos/{owner}/{repo}/commits/{commit_ref}"
+        response = self._request_with_retry_diff(url)
+        self._check_response(response)
+        return response.text
+
     @retry(
         retry=retry_if_exception_type(_RetryableGitHubError),
         stop=stop_after_attempt(_MAX_RETRIES),
@@ -350,3 +411,33 @@ class GitHubClient:
             return None
         match = re.search(r'<([^>]+)>;\s*rel="next"', link_header)
         return match.group(1) if match else None
+
+
+def github_client_for_repo(repo_root: Path) -> GitHubClient:
+    """Build ``GitHubClient`` from connected config and/or environment (memory only).
+
+    Uses the same secret sources users already configured: optional
+    ``github_token`` on :class:`~avos_cli.models.config.RepoConfig` (file plus
+    env overlay from :func:`~avos_cli.config.manager.load_config`, never
+    re-persisted here), then ``GITHUB_TOKEN`` after layered ``.env`` load.
+
+    Args:
+        repo_root: Git root containing ``.avos/config.json`` when connected.
+
+    Returns:
+        Authenticated client.
+
+    Raises:
+        AuthError: If no non-empty token is available.
+    """
+    from avos_cli.config.manager import load_config
+
+    try:
+        cfg = load_config(repo_root)
+    except ConfigurationNotInitializedError:
+        return GitHubClient()
+    if cfg.github_token is not None:
+        token_value = cfg.github_token.get_secret_value().strip()
+        if token_value:
+            return GitHubClient(token=token_value)
+    return GitHubClient()

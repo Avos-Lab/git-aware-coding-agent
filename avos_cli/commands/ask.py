@@ -43,6 +43,7 @@ from avos_cli.utils.output import (
     render_panel,
     render_table,
 )
+from avos_cli.utils.sanitization_diagnostics import explain_sanitization_gate
 
 _log = get_logger("commands.ask")
 
@@ -66,6 +67,7 @@ def _render_reply_output(
     raw_output: str,
     reply_service: ReplyOutputService | None,
     json_output: bool = False,
+    json_merge: dict[str, object] | None = None,
 ) -> None:
     """Render ask output via reply layer or raw. Used for both success and fallback paths.
 
@@ -74,6 +76,7 @@ def _render_reply_output(
         raw_output: Raw artifact content string.
         reply_service: Optional reply output service for decorated terminal output.
         json_output: If True, emit JSON via converter agent instead of human UI.
+        json_merge: Optional top-level keys merged into successful JSON ``data`` objects.
     """
     if reply_service:
         decorated = reply_service.format_ask(question, raw_output)
@@ -84,6 +87,9 @@ def _render_reply_output(
             if json_str:
                 try:
                     parsed = json_module.loads(json_str)
+                    if isinstance(parsed, dict) and json_merge:
+                        for key, value in json_merge.items():
+                            parsed[key] = value
                     print_json(success=True, data=parsed, error=None)
                     return
                 except json_module.JSONDecodeError:
@@ -251,7 +257,9 @@ class AskOrchestrator:
                     error=None,
                 )
             else:
-                print_info("No matching evidence found in repository memory. Try a different question or ingest more data.")
+                print_info(
+                    "No matching evidence found in repository memory. Try a different question or ingest more data."
+                )
             return 0
 
         # Convert to internal model
@@ -269,13 +277,28 @@ class AskOrchestrator:
         sanitization_result = self._sanitizer.sanitize(artifacts)
 
         if sanitization_result.confidence_score < _SANITIZATION_CONFIDENCE_THRESHOLD:
-            _log.warning("Sanitization confidence %d below threshold %d", sanitization_result.confidence_score, _SANITIZATION_CONFIDENCE_THRESHOLD)
+            _log.warning(
+                "Sanitization confidence %d below threshold %d",
+                sanitization_result.confidence_score,
+                _SANITIZATION_CONFIDENCE_THRESHOLD,
+            )
             fallback_output = self._fallback_formatter.format_ask_fallback(
                 sanitization_result.artifacts, FallbackReason.SAFETY_BLOCK
             )
+            headline, detail_lines, json_merge = explain_sanitization_gate(
+                sanitization_result, _SANITIZATION_CONFIDENCE_THRESHOLD
+            )
             if not json_output:
-                print_warning("Content safety check insufficient for synthesis.")
-            _render_reply_output(question, fallback_output, self._reply_service, json_output)
+                print_warning(headline)
+                for line in detail_lines:
+                    print_info(line)
+            _render_reply_output(
+                question,
+                fallback_output,
+                self._reply_service,
+                json_output,
+                json_merge=json_merge,
+            )
             return 0
 
         # Stage 4: Budget pack
@@ -317,7 +340,11 @@ class AskOrchestrator:
         )
 
         if len(grounded) < _MIN_GROUNDED_CITATIONS:
-            _log.warning("Grounding failed: %d/%d citations grounded", len(grounded), len(grounded) + len(dropped))
+            _log.warning(
+                "Grounding failed: %d/%d citations grounded",
+                len(grounded),
+                len(grounded) + len(dropped),
+            )
             fallback_output = self._fallback_formatter.format_ask_fallback(
                 sanitization_result.artifacts, FallbackReason.GROUNDING_FAILED
             )
@@ -361,7 +388,9 @@ class AskOrchestrator:
             if grounded:
                 evidence_rows: list[list[str]] = []
                 for cit in grounded:
-                    note_id_short = cit.note_id[:10] + ".." if len(cit.note_id) > 12 else cit.note_id
+                    note_id_short = (
+                        cit.note_id[:10] + ".." if len(cit.note_id) > 12 else cit.note_id
+                    )
                     evidence_rows.append([note_id_short, cit.display_label])
                 render_table(
                     f"Evidence ({len(grounded)} citations)",

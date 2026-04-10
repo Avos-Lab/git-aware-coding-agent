@@ -6,12 +6,16 @@ pagination, date filtering, rate limit handling, auth errors, and 404s.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import httpx
 import pytest
 import respx
 
 from avos_cli.exceptions import AuthError, ResourceNotFoundError
-from avos_cli.services.github_client import GitHubClient
+from avos_cli.services.github_client import GitHubClient, github_client_for_repo
 
 TOKEN = "ghp_test_token_12345"
 OWNER = "org"
@@ -190,6 +194,64 @@ class TestAuthErrors:
         with pytest.raises(AuthError, match="token"):
             GitHubClient(token="")
 
+    def test_omitted_token_uses_github_token_env(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_from_env_for_test")
+        client = GitHubClient()
+        assert client._token == "ghp_from_env_for_test"
+
+
+class TestGithubClientForRepo:
+    """``github_client_for_repo`` resolves tokens from config overlay without new persistence."""
+
+    def test_without_config_uses_env_only_constructor(self, tmp_path: Path, monkeypatch):
+        """No .avos/config.json → same path as ``GitHubClient()`` (env / .env)."""
+        monkeypatch.setenv("GITHUB_TOKEN", "gh_env_only")
+        root = tmp_path / "repo"
+        root.mkdir()
+        (root / ".git").mkdir()
+        with patch("avos_cli.services.github_client.GitHubClient") as m_cls:
+            m_cls.return_value = MagicMock()
+            github_client_for_repo(root)
+        m_cls.assert_called_once_with()
+
+    def test_config_file_github_token_passed_explicitly(self, tmp_path: Path, monkeypatch):
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        root = tmp_path / "repo"
+        root.mkdir()
+        avos = root / ".avos"
+        avos.mkdir()
+        cfg = {
+            "repo": "o/r",
+            "memory_id": "repo:o/r",
+            "api_url": "https://api.example.com",
+            "api_key": "secret",
+            "github_token": "ghp_from_file_only",
+        }
+        (avos / "config.json").write_text(json.dumps(cfg))
+        with patch("avos_cli.services.github_client.GitHubClient") as m_cls:
+            m_cls.return_value = MagicMock()
+            github_client_for_repo(root)
+        m_cls.assert_called_once_with(token="ghp_from_file_only")
+
+    def test_env_overlay_overrides_file_github_token(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_env_wins")
+        root = tmp_path / "repo"
+        root.mkdir()
+        avos = root / ".avos"
+        avos.mkdir()
+        cfg = {
+            "repo": "o/r",
+            "memory_id": "repo:o/r",
+            "api_url": "https://api.example.com",
+            "api_key": "secret",
+            "github_token": "ghp_file_loses",
+        }
+        (avos / "config.json").write_text(json.dumps(cfg))
+        with patch("avos_cli.services.github_client.GitHubClient") as m_cls:
+            m_cls.return_value = MagicMock()
+            github_client_for_repo(root)
+        m_cls.assert_called_once_with(token="ghp_env_wins")
+
 
 class TestNotFound:
     @respx.mock
@@ -246,6 +308,36 @@ class TestTokenHeader:
                 headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
             )
         )
+        client.list_pull_requests(OWNER, REPO)
+        assert route.calls[0].request.headers["authorization"] == f"Bearer {TOKEN}"
+
+    @respx.mock
+    def test_omitted_token_sends_env_token_not_literal_none(self, monkeypatch):
+        """Default token=None must use GITHUB_TOKEN in Authorization, not 'Bearer None'."""
+        env_tok = "ghp_resolved_from_env_only"
+        monkeypatch.setenv("GITHUB_TOKEN", env_tok)
+        route = respx.get(f"{API}/repos/{OWNER}/{REPO}/pulls").mock(
+            return_value=httpx.Response(
+                200,
+                json=[],
+                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+            )
+        )
+        client = GitHubClient()
+        client.list_pull_requests(OWNER, REPO)
+        assert route.calls[0].request.headers["authorization"] == f"Bearer {env_tok}"
+
+    @respx.mock
+    def test_explicit_token_stripped_in_authorization_header(self):
+        raw = f"  {TOKEN}  \n"
+        route = respx.get(f"{API}/repos/{OWNER}/{REPO}/pulls").mock(
+            return_value=httpx.Response(
+                200,
+                json=[],
+                headers={"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": "9999999999"},
+            )
+        )
+        client = GitHubClient(token=raw)
         client.list_pull_requests(OWNER, REPO)
         assert route.calls[0].request.headers["authorization"] == f"Bearer {TOKEN}"
 
@@ -395,3 +487,75 @@ class TestListPRCommits:
         ]
         shas = client.list_pr_commits(OWNER, REPO, 1)
         assert len(shas) == 150
+
+
+class TestGetCommit:
+    """Tests for get_commit (JSON metadata)."""
+
+    @respx.mock
+    def test_returns_commit_json(self, client: GitHubClient):
+        full_sha = "b40f3bbdeadbeef012345678901234567890abcd"
+        respx.get(f"{API}/repos/{OWNER}/{REPO}/commits/{full_sha}").mock(
+            return_value=httpx.Response(
+                200,
+                json={"sha": full_sha, "commit": {"message": "Fix tests"}},
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                },
+            )
+        )
+        data = client.get_commit(OWNER, REPO, full_sha)
+        assert data["sha"] == full_sha
+
+    @respx.mock
+    def test_short_sha_resolves(self, client: GitHubClient):
+        full_sha = "b40f3bbdeadbeef012345678901234567890abcd"
+        respx.get(f"{API}/repos/{OWNER}/{REPO}/commits/b40f3bb").mock(
+            return_value=httpx.Response(
+                200,
+                json={"sha": full_sha},
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                },
+            )
+        )
+        data = client.get_commit(OWNER, REPO, "b40f3bb")
+        assert data["sha"] == full_sha
+
+
+class TestGetCommitDiff:
+    """Tests for get_commit_diff (unified diff via API)."""
+
+    @respx.mock
+    def test_returns_unified_diff(self, client: GitHubClient):
+        diff_text = "diff --git a/x.py b/x.py\n+line\n"
+        sha = "abc123def456789012345678901234567890abcd"
+        respx.get(f"{API}/repos/{OWNER}/{REPO}/commits/{sha}").mock(
+            return_value=httpx.Response(
+                200,
+                text=diff_text,
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                },
+            )
+        )
+        assert client.get_commit_diff(OWNER, REPO, sha) == diff_text
+
+    @respx.mock
+    def test_sends_diff_accept_header(self, client: GitHubClient):
+        sha = "abc123def456789012345678901234567890abcd"
+        route = respx.get(f"{API}/repos/{OWNER}/{REPO}/commits/{sha}").mock(
+            return_value=httpx.Response(
+                200,
+                text="diff",
+                headers={
+                    "X-RateLimit-Remaining": "100",
+                    "X-RateLimit-Reset": "9999999999",
+                },
+            )
+        )
+        client.get_commit_diff(OWNER, REPO, sha)
+        assert route.calls[0].request.headers["accept"] == "application/vnd.github.v3.diff"

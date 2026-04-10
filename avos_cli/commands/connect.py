@@ -154,21 +154,15 @@ class ConnectOrchestrator:
         matches ``origin`` so forks cannot accidentally connect as upstream.
 
         Args:
-            repo_slug: Explicit slug from CLI, or None to infer from git.
+            repo_slug: Explicit slug from CLI, or None / whitespace-only to
+                infer from git (same as omitting the argument).
 
         Returns:
             ``org/repo`` string, or None after emitting an error.
         """
-        if repo_slug is None:
-            return self._infer_repo_slug_from_origin()
-
-        trimmed = repo_slug.strip()
+        trimmed = repo_slug.strip() if repo_slug is not None else ""
         if not trimmed:
-            self._emit_error(
-                "REPOSITORY_CONTEXT_ERROR",
-                "Invalid repo slug format. Expected 'org/repo'.",
-            )
-            return None
+            return self._infer_repo_slug_from_origin()
 
         if not self._validate_slug(trimmed):
             self._emit_error(

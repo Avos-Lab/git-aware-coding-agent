@@ -74,12 +74,14 @@ class TestPackageImport:
     def test_cli_module_loads_dotenv_on_import(self):
         """CLI module should load .env variables when imported (cwd, pkg root, ~/.avos)."""
         import avos_cli.cli.main as cli_main
+        import avos_cli.utils.dotenv_load as dotenv_load_mod
 
         with patch("dotenv.load_dotenv") as load_dotenv_mock:
+            importlib.reload(dotenv_load_mod)
             importlib.reload(cli_main)
             assert load_dotenv_mock.call_count >= 1
 
-        # Restore original module state after patched reload.
+        importlib.reload(dotenv_load_mod)
         importlib.reload(cli_main)
 
     def test_exceptions_module_importable(self):
