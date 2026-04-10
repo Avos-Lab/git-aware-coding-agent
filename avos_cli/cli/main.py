@@ -11,27 +11,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
-from dotenv import load_dotenv
 
 from avos_cli import __version__
+from avos_cli.utils.dotenv_load import load_layers
 from avos_cli.utils.output import print_error
 
 if TYPE_CHECKING:
     from avos_cli.services.reply_output_service import ReplyOutputService
 
-# Load environment variables: cwd first, then package root (editable install),
-# then ~/.avos/.env. Later loads do not override existing vars.
-load_dotenv()
-try:
-    _pkg_root = Path(__file__).resolve().parent.parent.parent
-    _pkg_env = _pkg_root / ".env"
-    if _pkg_env.exists():
-        load_dotenv(_pkg_env)
-except Exception:
-    pass
-_avos_home = Path.home() / ".avos"
-if (_avos_home / ".env").exists():
-    load_dotenv(_avos_home / ".env")
+# Load .env: cwd, then repository root (beside avos_cli) with override so
+# GITHUB_TOKEN in project root wins, then ~/.avos/.env without overriding.
+load_layers()
 
 app = typer.Typer(
     name="avos",
@@ -106,7 +96,13 @@ def main(
 @app.command()
 def connect(
     ctx: typer.Context,
-    repo: str = typer.Argument(..., help="Repository slug in 'org/repo' format."),
+    repo: str | None = typer.Argument(
+        None,
+        help=(
+            "Repository slug in 'org/repo' format. "
+            "Omit to detect from git remote origin (GitHub HTTPS or SSH URL)."
+        ),
+    ),
 ) -> None:
     """Connect a repository to Avos Memory."""
     from avos_cli.commands.connect import ConnectOrchestrator

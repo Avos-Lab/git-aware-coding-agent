@@ -132,6 +132,21 @@ class TestConnectCLI:
         assert result.exit_code == 0
         assert (git_repo / ".avos" / "config.json").exists()
 
+    def test_connect_without_repo_arg_uses_origin(self, git_repo: Path):
+        git_m, gh_m, mem_m = _setup_service_mocks()
+        with (
+            _env_patch(),
+            patch("avos_cli.config.manager.find_repo_root", return_value=git_repo),
+            patch("avos_cli.services.git_client.GitClient", return_value=git_m),
+            patch("avos_cli.services.github_client.GitHubClient", return_value=gh_m),
+            patch("avos_cli.services.memory_client.AvosMemoryClient", return_value=mem_m),
+        ):
+            result = runner.invoke(app, ["connect"])
+
+        assert result.exit_code == 0
+        cfg = json.loads((git_repo / ".avos" / "config.json").read_text())
+        assert cfg["repo"] == "testorg/testrepo"
+
     def test_connect_invalid_slug_exits_1(self, git_repo: Path):
         git_m, gh_m, mem_m = _setup_service_mocks()
         with (

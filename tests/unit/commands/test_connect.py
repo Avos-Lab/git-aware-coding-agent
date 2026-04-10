@@ -294,6 +294,57 @@ class TestRepoSlugParsing:
         assert code == 1
 
 
+class TestInferSlugFromOrigin:
+    """When repo slug is omitted, connect derives org/repo from origin."""
+
+    def test_none_slug_uses_remote_origin(
+        self, orchestrator: ConnectOrchestrator, git_repo: Path
+    ):
+        code = orchestrator.run(None)
+        assert code == 0
+        data = json.loads((git_repo / ".avos" / "config.json").read_text())
+        assert data["repo"] == "myorg/myrepo"
+
+    def test_infer_uses_origin_slug_verbatim(
+        self,
+        orchestrator: ConnectOrchestrator,
+        mock_git_client: MagicMock,
+        git_repo: Path,
+    ):
+        """No explicit org/repo: persisted slug is exactly what origin parses to."""
+        mock_git_client.remote_origin.return_value = "acme/custom-name"
+        code = orchestrator.run(None)
+        assert code == 0
+        data = json.loads((git_repo / ".avos" / "config.json").read_text())
+        assert data["repo"] == "acme/custom-name"
+
+    def test_none_slug_no_origin_returns_1(
+        self, orchestrator: ConnectOrchestrator, mock_git_client: MagicMock
+    ):
+        mock_git_client.remote_origin.return_value = None
+        code = orchestrator.run(None)
+        assert code == 1
+
+    def test_none_slug_git_error_returns_1(
+        self,
+        mock_git_client: MagicMock,
+        mock_github_client: MagicMock,
+        mock_memory_client: MagicMock,
+        git_repo: Path,
+    ):
+        mock_git_client.remote_origin.side_effect = RepositoryContextError(
+            "Not a git repo"
+        )
+        orch = ConnectOrchestrator(
+            git_client=mock_git_client,
+            github_client=mock_github_client,
+            memory_client=mock_memory_client,
+            repo_root=git_repo,
+        )
+        code = orch.run(None)
+        assert code == 1
+
+
 class TestAutoHookInstall:
     """Tests for automatic pre-push hook installation on connect."""
 

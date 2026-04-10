@@ -1,8 +1,9 @@
 """Connect command orchestrator for AVOS CLI.
 
-Implements the `avos connect org/repo` flow: validates Git repo,
-verifies GitHub access, creates bootstrap note in Avos Memory,
-and writes .avos/config.json.
+Implements the `avos connect` flow: validates Git repo, optionally
+accepts `org/repo` or derives it from `origin`, verifies GitHub access,
+creates bootstrap note in Avos Memory, and writes .avos/config.json
+(including `repo` for later use as default context).
 """
 
 from __future__ import annotations
@@ -37,8 +38,9 @@ _BOOTSTRAP_MARKER = "repo_connected"
 class ConnectOrchestrator:
     """Orchestrates the `avos connect` command.
 
-    Precondition order (per Q7): Git repo -> remote parseable ->
-    GitHub API accessible -> Avos API accessible -> write config.
+    Precondition order (per Q7): Git repo -> slug (explicit or from
+    origin) -> when explicit, remote must match -> GitHub API accessible
+    -> Avos API accessible -> write config with `repo` slug persisted.
 
     Args:
         git_client: Local git operations wrapper.
@@ -59,11 +61,13 @@ class ConnectOrchestrator:
         self._memory = memory_client
         self._repo_root = repo_root
 
-    def run(self, repo_slug: str, json_output: bool = False) -> int:
+    def run(self, repo_slug: str | None = None, json_output: bool = False) -> int:
         """Execute the connect flow.
 
         Args:
-            repo_slug: Repository identifier in 'org/repo' format.
+            repo_slug: Repository identifier in 'org/repo' format. When
+                omitted, the slug is read from ``git remote origin`` (GitHub
+                HTTPS or SSH URL) and stored in config for later commands.
             json_output: If True, emit JSON output instead of human UI.
 
         Returns:
@@ -71,29 +75,26 @@ class ConnectOrchestrator:
         """
         self._json_output = json_output
 
-        if not self._validate_slug(repo_slug):
-            self._emit_error("REPOSITORY_CONTEXT_ERROR", "Invalid repo slug format. Expected 'org/repo'.")
+        resolved = self._resolve_repo_slug(repo_slug)
+        if resolved is None:
             return 1
 
-        owner, repo = repo_slug.split("/", 1)
-
-        if not self._verify_git_remote(repo_slug):
-            return 1
+        owner, repo = resolved.split("/", 1)
 
         if not self._verify_github_access(owner, repo):
             return self._last_exit_code
 
-        memory_id = f"repo:{repo_slug}"
+        memory_id = f"repo:{resolved}"
 
         if not self._verify_avos_access(memory_id, _BOOTSTRAP_MARKER):
             return self._last_exit_code
 
         if not self._bootstrap_exists and not self._send_bootstrap_note(
-            memory_id, repo_slug, _BOOTSTRAP_MARKER
+            memory_id, resolved, _BOOTSTRAP_MARKER
         ):
             return self._last_exit_code
 
-        self._write_config(repo_slug, memory_id)
+        self._write_config(resolved, memory_id)
 
         # Auto-install pre-push hook for automatic commit sync
         hook_installed = self._auto_install_hook()
@@ -103,7 +104,7 @@ class ConnectOrchestrator:
             print_json(
                 success=True,
                 data={
-                    "repo": repo_slug,
+                    "repo": resolved,
                     "memory_id": memory_id,
                     "config_path": config_path,
                     "hook_installed": hook_installed,
@@ -113,7 +114,7 @@ class ConnectOrchestrator:
         else:
             hook_status = "installed" if hook_installed else "skipped (existing hook found)"
             render_kv_panel(
-                f"Connected to {repo_slug}",
+                f"Connected to {resolved}",
                 [
                     ("Memory", memory_id),
                     ("Pre-push hook", hook_status),
@@ -142,6 +143,74 @@ class ConnectOrchestrator:
             return False
         parts = slug.split("/", 1)
         return bool(parts[0]) and bool(parts[1])
+
+    def _resolve_repo_slug(self, repo_slug: str | None) -> str | None:
+        """Normalize user input or infer org/repo from ``origin``.
+
+        When ``repo_slug`` is None or whitespace-only, uses
+        ``GitClient.remote_origin`` (same parsing as explicit connect).
+
+        When a non-empty slug is provided, validates format and checks it
+        matches ``origin`` so forks cannot accidentally connect as upstream.
+
+        Args:
+            repo_slug: Explicit slug from CLI, or None to infer from git.
+
+        Returns:
+            ``org/repo`` string, or None after emitting an error.
+        """
+        if repo_slug is None:
+            return self._infer_repo_slug_from_origin()
+
+        trimmed = repo_slug.strip()
+        if not trimmed:
+            self._emit_error(
+                "REPOSITORY_CONTEXT_ERROR",
+                "Invalid repo slug format. Expected 'org/repo'.",
+            )
+            return None
+
+        if not self._validate_slug(trimmed):
+            self._emit_error(
+                "REPOSITORY_CONTEXT_ERROR",
+                "Invalid repo slug format. Expected 'org/repo'.",
+            )
+            return None
+
+        if not self._verify_git_remote(trimmed):
+            return None
+
+        return trimmed
+
+    def _infer_repo_slug_from_origin(self) -> str | None:
+        """Read ``org/repo`` from ``git remote get-url origin``.
+
+        Returns:
+            Valid slug, or None after emitting an error.
+        """
+        try:
+            remote = self._git.remote_origin(self._repo_root)
+        except (RepositoryContextError, AvosError) as e:
+            self._emit_error("REPOSITORY_CONTEXT_ERROR", str(e))
+            return None
+
+        if remote is None:
+            self._emit_error(
+                "REPOSITORY_CONTEXT_ERROR",
+                "No origin remote found, or origin URL could not be parsed as "
+                "org/repo. Add a GitHub remote or run: avos connect org/repo",
+            )
+            return None
+
+        if not self._validate_slug(remote):
+            self._emit_error(
+                "REPOSITORY_CONTEXT_ERROR",
+                f"Origin produced an invalid slug ({remote!r}). "
+                "Run: avos connect org/repo",
+            )
+            return None
+
+        return remote
 
     def _verify_git_remote(self, repo_slug: str) -> bool:
         """Verify git repo exists and remote matches the slug.
