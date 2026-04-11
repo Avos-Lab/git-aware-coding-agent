@@ -71,7 +71,7 @@ class TestSuccessfulSynthesis:
     """Happy path: LLM returns valid structured response."""
 
     def test_ask_mode_returns_answer(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request(mode=QueryMode.ASK)
         mock_response = httpx.Response(
             200,
@@ -83,7 +83,7 @@ class TestSuccessfulSynthesis:
         assert "JWT" in result.answer_text
 
     def test_history_mode_returns_answer(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request(mode=QueryMode.HISTORY)
         mock_response = httpx.Response(
             200,
@@ -100,7 +100,7 @@ class TestResponseParsing:
 
     def test_json_response_preserves_raw_text(self):
         """Raw text is preserved so citation validator can extract structured citations."""
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         mock_response = httpx.Response(
             200,
@@ -113,7 +113,7 @@ class TestResponseParsing:
         assert "abc-123" in result.answer_text
 
     def test_plain_text_fallback(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         plain_response = {
             "id": "msg_test",
@@ -134,7 +134,7 @@ class TestResponseParsing:
         assert result.answer_text == "Just a plain text answer."
 
     def test_empty_content_raises(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         empty_response = {
             "id": "msg_test",
@@ -161,7 +161,7 @@ class TestFailureClassification:
     """Transient vs non-transient failure classification."""
 
     def test_timeout_is_transient(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         with patch.object(
             client._client, "post", side_effect=httpx.TimeoutException("timeout")
@@ -171,7 +171,7 @@ class TestFailureClassification:
             assert exc_info.value.failure_class == "transient"
 
     def test_connection_error_is_transient(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         with patch.object(
             client._client, "post", side_effect=httpx.ConnectError("connection refused")
@@ -181,7 +181,7 @@ class TestFailureClassification:
             assert exc_info.value.failure_class == "transient"
 
     def test_429_is_transient(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         mock_response = httpx.Response(
             429,
@@ -194,7 +194,7 @@ class TestFailureClassification:
             assert exc_info.value.failure_class == "transient"
 
     def test_503_is_transient(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         mock_response = httpx.Response(
             503,
@@ -207,7 +207,7 @@ class TestFailureClassification:
             assert exc_info.value.failure_class == "transient"
 
     def test_401_is_non_transient(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         mock_response = httpx.Response(
             401,
@@ -220,7 +220,7 @@ class TestFailureClassification:
             assert exc_info.value.failure_class == "non_transient"
 
     def test_400_is_non_transient(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         mock_response = httpx.Response(
             400,
@@ -237,21 +237,21 @@ class TestPromptConstruction:
     """Prompt templates and message structure."""
 
     def test_ask_prompt_includes_question(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request(mode=QueryMode.ASK, query="How does auth work?")
         messages = client._build_messages(request)
         user_content = " ".join(m["content"] for m in messages if m["role"] == "user")
         assert "How does auth work?" in user_content
 
     def test_history_prompt_includes_subject(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request(mode=QueryMode.HISTORY, query="payment system")
         messages = client._build_messages(request)
         user_content = " ".join(m["content"] for m in messages if m["role"] == "user")
         assert "payment system" in user_content
 
     def test_artifacts_included_in_context(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         messages = client._build_messages(request)
         all_content = " ".join(m["content"] for m in messages)
@@ -259,7 +259,7 @@ class TestPromptConstruction:
         assert "JWT tokens" in all_content
 
     def test_system_prompt_present(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = _make_request()
         system_prompt = client._get_system_prompt(request.mode)
         assert len(system_prompt) > 0
@@ -267,7 +267,7 @@ class TestPromptConstruction:
 
 class TestEdgeCases:
     def test_empty_artifacts_in_request(self):
-        client = LLMClient(api_key="sk_test_key")
+        client = LLMClient(api_key="sk_test_key", provider="anthropic")
         request = SynthesisRequest(
             mode=QueryMode.ASK,
             query="test",

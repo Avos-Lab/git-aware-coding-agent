@@ -9,7 +9,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in git-aware-coding-agent (Avos CLI), please report it responsibly.
+If you discover a security vulnerability in git_aware_coding_agent (Avos CLI), please report it responsibly.
 
 **Do not** open a public GitHub issue for security vulnerabilities.
 

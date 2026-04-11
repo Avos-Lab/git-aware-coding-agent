@@ -19,7 +19,7 @@ exclude = [
 ]
 
 [project]
-name = "git-aware-coding-agent"
+name = "git_aware_coding_agent"
 version = "1.0.0"
 description = "Git history and session memory for AI coding agents working in the same repository."
 readme = "README.md"

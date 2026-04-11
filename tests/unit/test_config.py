@@ -178,6 +178,30 @@ class TestLoadConfig:
         cfg = load_config(avos_dir.parent)
         assert cfg.llm.provider == "openai"
 
+    def test_omitted_llm_defaults_to_openai(
+        self, avos_dir: Path, valid_config_data: dict, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.delenv("AVOS_LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("AVOS_LLM_MODEL", raising=False)
+        config_path = avos_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config_data))
+
+        cfg = load_config(avos_dir.parent)
+        assert cfg.llm.provider == "openai"
+        assert cfg.llm.model == "gpt-4o"
+
+    def test_llm_anthropic_without_model_gets_claude_default(
+        self, avos_dir: Path, valid_config_data: dict, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.delenv("AVOS_LLM_MODEL", raising=False)
+        valid_config_data["llm"] = {"provider": "anthropic"}
+        config_path = avos_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config_data))
+
+        cfg = load_config(avos_dir.parent)
+        assert cfg.llm.provider == "anthropic"
+        assert cfg.llm.model == "claude-sonnet-4-5-20250929"
+
 
 class TestConnectedRepoSlug:
     def test_returns_repo_when_connected(

@@ -73,6 +73,6 @@ Same as `avos ask`: set `REPLY_MODEL`, `REPLY_MODEL_URL`, and `REPLY_MODEL_API_K
 
 ## Troubleshooting
 
-- **AUTH_ERROR**: Set `AVOS_API_KEY` and `ANTHROPIC_API_KEY`.
+- **AUTH_ERROR**: Set `AVOS_API_KEY` and `OPENAI_API_KEY` (default LLM). Use `ANTHROPIC_API_KEY` when the provider is Anthropic.
 - **QUERY_EMPTY_RESULT**: No artifacts found. Run `avos ingest` first.
 - **REPLY_SERVICE_UNAVAILABLE**: JSON mode requires `REPLY_MODEL`, `REPLY_MODEL_URL`, `REPLY_MODEL_API_KEY`.

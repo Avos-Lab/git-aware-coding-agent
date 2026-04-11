@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Default LLM provider is **OpenAI** (`gpt-4o`); set `AVOS_LLM_PROVIDER=anthropic` or `"llm": {"provider": "anthropic"}` for Anthropic. `ask` / `history` therefore expect `OPENAI_API_KEY` by default.
 - JSON output envelope now includes `hint` and `retryable` fields in error responses
 - All orchestrators now accept `json_output` parameter for consistent JSON output
 

@@ -58,7 +58,7 @@ On error:
 
 - `AVOS_API_KEY` - Avos Memory API key
 - `GITHUB_TOKEN` - GitHub personal access token
-- `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` - For LLM synthesis
+- `OPENAI_API_KEY` (default) or `ANTHROPIC_API_KEY` (when using Anthropic) - For LLM synthesis
 
 For JSON output formatting:
 - `REPLY_MODEL` - Model identifier

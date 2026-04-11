@@ -139,13 +139,27 @@ def _apply_env_overlay(data: dict[str, Any]) -> None:
         llm_data["provider"] = llm_provider_env
     if llm_model_env:
         llm_data["model"] = llm_model_env
-    # When provider is openai (from file or env) and model is Anthropic default,
-    # use gpt-4o to avoid passing claude-* to OpenAI
-    provider = llm_data.get("provider", "anthropic")
-    if provider.lower() == "openai" and not llm_model_env:
-        model = llm_data.get("model", "claude-sonnet-4-5-20250929")
-        if model.startswith("claude-"):
-            llm_data["model"] = "gpt-4o"
+
+    # Align model with provider when the user did not set AVOS_LLM_MODEL.
+    # Defaults: openai -> gpt-4o, anthropic -> claude-sonnet-4-5-20250929.
+    provider = (llm_data.get("provider") or "openai").lower()
+    if not llm_model_env:
+        model = llm_data.get("model")
+        if provider == "openai":
+            if model is None or (isinstance(model, str) and model.startswith("claude-")):
+                llm_data["model"] = "gpt-4o"
+        elif provider == "anthropic" and (
+            model is None
+            or (
+                isinstance(model, str)
+                and (
+                    model.startswith("gpt-")
+                    or model.startswith("o1")
+                    or model.startswith("o3")
+                )
+            )
+        ):
+            llm_data["model"] = "claude-sonnet-4-5-20250929"
     data["llm"] = llm_data
 
 

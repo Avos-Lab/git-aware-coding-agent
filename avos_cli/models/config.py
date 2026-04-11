@@ -15,14 +15,14 @@ class LLMConfig(BaseModel):
     """LLM provider configuration.
 
     Args:
-        provider: LLM provider name (e.g. 'anthropic', 'openai').
+        provider: LLM provider name (e.g. 'openai', 'anthropic').
         model: Model identifier string.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    provider: str = "anthropic"
-    model: str = "claude-sonnet-4-5-20250929"
+    provider: str = "openai"
+    model: str = "gpt-4o"
 
 
 class RepoConfig(BaseModel):

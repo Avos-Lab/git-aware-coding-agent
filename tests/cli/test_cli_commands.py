@@ -62,7 +62,7 @@ def _env_patch(overrides: dict[str, str] | None = None):
         "AVOS_API_KEY": "test-key",
         "AVOS_API_URL": "http://localhost:8000",
         "GITHUB_TOKEN": "gh-tok",
-        "ANTHROPIC_API_KEY": "test-anthropic-key",
+        "OPENAI_API_KEY": "test-openai-key",
     }
     if overrides is not None:
         base.update(overrides)
@@ -283,14 +283,14 @@ class TestAskCLI:
             result = runner.invoke(app, ["ask", "How does auth work?"])
         assert result.exit_code == 1
 
-    def test_missing_anthropic_key_exits_1(self, configured_repo: Path):
+    def test_missing_openai_key_exits_1(self, configured_repo: Path):
         with (
-            _env_patch({"ANTHROPIC_API_KEY": ""}),
+            _env_patch({"OPENAI_API_KEY": ""}),
             patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
         ):
             result = runner.invoke(app, ["ask", "How does auth work?"])
         assert result.exit_code == 1
-        assert "ANTHROPIC_API_KEY" in result.output
+        assert "OPENAI_API_KEY" in result.output
 
     def test_ask_help_shows(self):
         result = runner.invoke(app, ["ask", "--help"])
@@ -345,14 +345,14 @@ class TestHistoryCLI:
             result = runner.invoke(app, ["history", "payment system"])
         assert result.exit_code == 1
 
-    def test_missing_anthropic_key_exits_1(self, configured_repo: Path):
+    def test_missing_openai_key_exits_1(self, configured_repo: Path):
         with (
-            _env_patch({"ANTHROPIC_API_KEY": ""}),
+            _env_patch({"OPENAI_API_KEY": ""}),
             patch("avos_cli.config.manager.find_repo_root", return_value=configured_repo),
         ):
             result = runner.invoke(app, ["history", "payment system"])
         assert result.exit_code == 1
-        assert "ANTHROPIC_API_KEY" in result.output
+        assert "OPENAI_API_KEY" in result.output
 
     def test_history_help_shows(self):
         result = runner.invoke(app, ["history", "--help"])

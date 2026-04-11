@@ -46,8 +46,8 @@ Works with **Claude Code**, **Cursor**, and the **terminal**. Python 3.10+. Apac
 ## Quick Start (60 seconds)
 
 ```bash
-# Install
-pip install git-aware-coding-agent
+# Install (PyPI package name). After install, use the avos CLI everywhere below.
+pip install git_aware_coding_agent
 
 # Set credentials
 export AVOS_API_KEY="your-key"
@@ -281,8 +281,8 @@ avos_cli/
 | `AVOS_API_KEY`        | All commands                     | Avos Memory API key from `https://avoslab.com/`          |
 | `AVOS_API_URL`        | All commands                     | API endpoint (default: `https://avosmemory.avoslab.com`) |
 | `GITHUB_TOKEN`        | `connect`, `ingest`, `ingest-pr` | GitHub personal access token                             |
-| `ANTHROPIC_API_KEY`   | `ask`, `history`                 | Anthropic API key for LLM synthesis                      |
-| `OPENAI_API_KEY`      | `ask`, `history`                 | Alternative: OpenAI API key                              |
+| `OPENAI_API_KEY`      | `ask`, `history`                 | OpenAI API key for LLM synthesis (default provider)      |
+| `ANTHROPIC_API_KEY`   | `ask`, `history`                 | Use when `AVOS_LLM_PROVIDER=anthropic` or config says so |
 | `REPLY_MODEL`         | `--json` for `ask`/`history`     | Model identifier for output formatting                   |
 | `REPLY_MODEL_URL`     | `--json` for `ask`/`history`     | API endpoint for reply model                             |
 | `REPLY_MODEL_API_KEY` | `--json` for `ask`/`history`     | API key for reply model                                  |

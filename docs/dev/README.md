@@ -21,7 +21,7 @@ Orchestrators never call each other. They share data only through the Avos Memor
 
 - Python 3.10+
 - Git
-- AVOS_API_KEY, GITHUB_TOKEN, ANTHROPIC_API_KEY (for full functionality)
+- AVOS_API_KEY, GITHUB_TOKEN, OPENAI_API_KEY (default LLM; or ANTHROPIC_API_KEY if using Anthropic)
 
 ### Install in development mode
 

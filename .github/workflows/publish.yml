@@ -1,5 +1,15 @@
-# TestPyPI dry-run and production publish workflow.
-# Triggered manually. Use for release verification before tagging.
+# Build and upload git_aware_coding_agent to TestPyPI or PyPI.
+#
+# Secrets — add under Settings → Secrets and variables → Actions (repository secrets):
+#   PYPI_API_TOKEN       — API token for https://pypi.org (username is always __token__)
+#   TESTPYPI_API_TOKEN   — API token for https://test.pypi.org (only for TestPyPI runs)
+#
+# Optional: create GitHub Environments "pypi" / "testpypi" with protection rules, then
+# add the same secret names on each environment if you prefer scoped secrets.
+#
+# Triggers:
+#   • workflow_dispatch — choose testpypi or pypi
+#   • release published   — uploads to PyPI only (use after tagging / GitHub Release)
 
 name: Publish
 
@@ -7,58 +17,86 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'Publish target'
+        description: "Publish target"
         required: true
-        default: 'testpypi'
+        default: "pypi"
         type: choice
         options:
-          - testpypi
           - pypi
+          - testpypi
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+# One publish at a time per repo (avoid overlapping uploads).
+concurrency:
+  group: publish-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   build:
-    name: Build
+    name: Build distributions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install build
-        run: pip install build
-      - name: Build package
+
+      - name: Install build tools
+        run: pip install --upgrade build twine
+
+      - name: Build sdist and wheel
         run: python -m build
-      - name: Upload artifact
+
+      - name: Check metadata and files
+        run: python -m twine check dist/*
+
+      - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
 
   publish:
-    name: Publish to ${{ github.event.inputs.target }}
+    name: Upload to package index
     runs-on: ubuntu-latest
     needs: [build]
-    environment: ${{ github.event.inputs.target }}
     steps:
+      - name: Resolve publish target
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "target=pypi" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=${{ github.event.inputs.target }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/download-artifact@v4
         with:
           name: dist
+          path: dist/
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install Twine
+        run: pip install --upgrade twine
+
       - name: Publish to TestPyPI
-        if: github.event.inputs.target == 'testpypi'
-        run: |
-          pip install twine
-          twine upload --repository testpypi dist/*
+        if: steps.meta.outputs.target == 'testpypi'
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TESTPYPI_API_TOKEN }}
+        run: twine upload --non-interactive --repository testpypi dist/*
+
       - name: Publish to PyPI
-        if: github.event.inputs.target == 'pypi'
-        run: |
-          pip install twine
-          twine upload dist/*
+        if: steps.meta.outputs.target == 'pypi'
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload --non-interactive dist/*

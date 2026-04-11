@@ -15,8 +15,10 @@ export AVOS_API_KEY="your-api-key"
 ### 2. Install
 
 ```bash
-pip install git-aware-coding-agent
+pip install git_aware_coding_agent
 ```
+
+The CLI you run in the terminal is **`avos`** (for example `avos connect`, `avos ask`).
 
 ### 3. Connect
 

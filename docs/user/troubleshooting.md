@@ -41,9 +41,19 @@ export GITHUB_TOKEN="ghp_..."   # or github_pat_... for fine-grained
 
 Without these permissions, private repos return 404 (GitHub hides existence if you lack access).
 
+### AUTH_ERROR: OPENAI_API_KEY required
+
+**Cause:** The default LLM provider is OpenAI for `ask` and `history`, and `OPENAI_API_KEY` is not set.
+
+**Solution:** Set your OpenAI API key:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
 ### AUTH_ERROR: ANTHROPIC_API_KEY required
 
-**Cause:** Required for `ask` and `history` (LLM synthesis).
+**Cause:** The repository is configured to use Anthropic (`AVOS_LLM_PROVIDER=anthropic` or `"llm": {"provider": "anthropic"}` in `.avos/config.json`), but `ANTHROPIC_API_KEY` is not set.
 
 **Solution:** Set your Anthropic API key:
 

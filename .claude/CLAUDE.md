@@ -5,6 +5,7 @@ This repository uses **avos-dev-cli** for codebase memory. Follow these instruct
 ## Project Overview
 
 avos-dev-cli is a developer memory CLI that:
+
 - Stores repository history (PRs, issues, commits, docs) in Avos Memory
 - Enables semantic search over codebase context
 - Provides chronological history of any subject
@@ -16,7 +17,7 @@ Ensure these are set before using avos commands:
 ```bash
 export AVOS_API_KEY="your-avos-api-key"
 export GITHUB_TOKEN="your-github-token"
-export ANTHROPIC_API_KEY="your-anthropic-key"  # or OPENAI_API_KEY
+export ANTHROPIC_API_KEY="your-anthropic-key"
 
 # For JSON output formatting (optional but recommended)
 export REPLY_MODEL="your-model-id"
@@ -53,6 +54,7 @@ avos ask --json "why was this implemented this way?"
 ```
 
 This helps you understand:
+
 - Why the code was written this way
 - Who made previous changes and why
 - Related PRs, issues, and commits
@@ -70,11 +72,11 @@ avos ask --json "how do other parts of the codebase handle Y?"
 
 ## Available Commands
 
-| Command | Purpose |
-|---------|---------|
-| `avos ask --json "question"` | Search memory for answers |
-| `avos history --json "subject"` | Get chronological history |
-| `avos ingest-pr --json org/repo N` | Ingest a single PR |
+| Command                            | Purpose                   |
+| ---------------------------------- | ------------------------- |
+| `avos ask --json "question"`       | Search memory for answers |
+| `avos history --json "subject"`    | Get chronological history |
+| `avos ingest-pr --json org/repo N` | Ingest a single PR        |
 
 ## JSON Output Format
 

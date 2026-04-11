@@ -87,7 +87,7 @@ When configured, the reply layer formats both successful and fallback output for
 
 ## Troubleshooting
 
-- **AUTH_ERROR**: Set `AVOS_API_KEY` and `ANTHROPIC_API_KEY` (required for LLM synthesis).
+- **AUTH_ERROR**: Set `AVOS_API_KEY` and `OPENAI_API_KEY` (default LLM). Use `ANTHROPIC_API_KEY` when the provider is Anthropic.
 - **QUERY_EMPTY_RESULT**: No relevant artifacts found. Run `avos ingest` first.
-- **LLM_SYNTHESIS_ERROR**: Check `ANTHROPIC_API_KEY` and network connectivity.
+- **LLM_SYNTHESIS_ERROR**: Check `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` (per configured provider) and network connectivity.
 - **REPLY_SERVICE_UNAVAILABLE**: JSON mode requires `REPLY_MODEL`, `REPLY_MODEL_URL`, `REPLY_MODEL_API_KEY`.

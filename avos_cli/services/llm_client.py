@@ -138,19 +138,19 @@ _HISTORY_SYSTEM_PROMPT = (
 class LLMClient:
     """HTTP client for LLM synthesis via Anthropic or OpenAI API.
 
-    Supports provider="anthropic" (default) or provider="openai".
+    Supports provider="openai" (default) or provider="anthropic".
     Uses raw httpx (no new dependencies).
 
     Args:
         api_key: API key for the chosen provider.
-        provider: "anthropic" or "openai".
+        provider: "openai" or "anthropic".
         api_url: Override for API URL (testing).
     """
 
     def __init__(
         self,
         api_key: str,
-        provider: str = "anthropic",
+        provider: str = "openai",
         api_url: str | None = None,
     ) -> None:
         self._api_key = api_key

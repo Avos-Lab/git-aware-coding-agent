@@ -50,8 +50,8 @@ class TestRepoConfig:
             api_url="https://api.example.com",
             api_key=SecretStr("sk_test"),
         )
-        assert cfg.llm.provider == "anthropic"
-        assert cfg.llm.model == "claude-sonnet-4-5-20250929"
+        assert cfg.llm.provider == "openai"
+        assert cfg.llm.model == "gpt-4o"
 
     def test_llm_config_override(self):
         cfg = RepoConfig(
