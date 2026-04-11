@@ -15,7 +15,7 @@ export AVOS_API_KEY="your-api-key"
 ### 2. Install
 
 ```bash
-pip install avos-cli
+pip install git-aware-coding-agent
 ```
 
 ### 3. Connect

@@ -59,12 +59,38 @@ When opening a PR, include:
 
 ## Release Process
 
-Releases are cut by maintainers. The process includes:
+Releases are cut by maintainers. The PyPI distribution name is **`git-aware-coding-agent`** (`pip install git-aware-coding-agent`); the import package and CLI remain **`avos_cli`** / `avos`.
 
 1. Update version in `pyproject.toml` and `avos_cli/__init__.py`.
 2. Update `CHANGELOG.md`.
 3. Run full CI (lint, unit, integration, contract, coverage, secret scan).
-4. Tag the release and publish to PyPI (or TestPyPI for dry runs).
+4. **Build locally** (optional sanity check):
+
+   ```bash
+   rm -rf dist/ build/
+   python -m pip install -U build twine
+   python -m build
+   python -m twine check dist/*
+   ```
+
+5. **Publish via GitHub Actions** (recommended): open **Actions → Publish → Run workflow**, choose **testpypi** first, then **pypi** after a successful TestPyPI install check. Configure repository environments **testpypi** and **pypi** with secrets **`TESTPYPI_API_TOKEN`** and **`PYPI_API_TOKEN`** (PyPI API tokens; username is always `__token__` when using tokens).
+
+6. **TestPyPI install check** (after TestPyPI upload):
+
+   ```bash
+   python -m venv .venv-tptest
+   source .venv-tptest/bin/activate
+   pip install --index-url https://test.pypi.org/simple/ \
+     --extra-index-url https://pypi.org/simple/ \
+     git-aware-coding-agent==<version>
+   avos --version
+   ```
+
+7. **Production PyPI**: run the same workflow with target **pypi**, then verify `pip install git-aware-coding-agent`.
+
+8. Tag the release and push the tag (match `pyproject.toml` version), e.g. `git tag v1.0.0 && git push origin v1.0.0`, and create a GitHub Release.
+
+**Local upload** (alternative): `python -m twine upload --repository testpypi dist/*` or `twine upload dist/*` with `TWINE_USERNAME=__token__` and `TWINE_PASSWORD=<api-token>`.
 
 ## Questions
 
