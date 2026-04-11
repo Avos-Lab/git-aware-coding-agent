@@ -161,7 +161,7 @@ def connect(
     json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
-    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+    api_url = os.environ.get("AVOS_API_URL", "https://avosmemory.avoslab.com")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
@@ -218,7 +218,7 @@ def ingest(
     since_days = _parse_since_days(since)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
-    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+    api_url = os.environ.get("AVOS_API_URL", "https://avosmemory.avoslab.com")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
@@ -264,7 +264,7 @@ def ingest_pr(
     json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
-    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+    api_url = os.environ.get("AVOS_API_URL", "https://avosmemory.avoslab.com")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
@@ -310,7 +310,7 @@ def ask(
     json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
-    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+    api_url = os.environ.get("AVOS_API_URL", "https://avosmemory.avoslab.com")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
@@ -373,7 +373,7 @@ def history(
     json_output = ctx.obj.get("json", False)
 
     api_key = os.environ.get("AVOS_API_KEY", "")
-    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+    api_url = os.environ.get("AVOS_API_URL", "https://avosmemory.avoslab.com")
 
     if not api_key:
         print_error("[AUTH_ERROR] AVOS_API_KEY environment variable is required.")
@@ -476,7 +476,7 @@ def hook_sync(
     from avos_cli.services.memory_client import AvosMemoryClient
 
     api_key = os.environ.get("AVOS_API_KEY", "")
-    api_url = os.environ.get("AVOS_API_URL", "https://api.avos.ai")
+    api_url = os.environ.get("AVOS_API_URL", "https://avosmemory.avoslab.com")
 
     if not api_key:
         return

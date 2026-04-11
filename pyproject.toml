@@ -2,6 +2,11 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# Ensure editable installs put the project root on sys.path so a stale
+# site-packages/avos_cli/ tree cannot shadow the checkout (see docs/user/troubleshooting.md).
+[tool.hatch.build]
+dev-mode-dirs = ["."]
+
 [tool.hatch.build.targets.wheel]
 packages = ["avos_cli"]
 
@@ -20,7 +25,7 @@ exclude = [
 
 [project]
 name = "git_aware_coding_agent"
-version = "1.0.0"
+version = "0.0.1"
 description = "Git history and session memory for AI coding agents working in the same repository."
 readme = "README.md"
 license = "Apache-2.0"

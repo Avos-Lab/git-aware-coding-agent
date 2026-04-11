@@ -13,6 +13,10 @@
 
 name: Publish
 
+# Keep in sync with [project].version in pyproject.toml (source of truth for builds).
+env:
+  PACKAGE_VERSION: "0.0.1"
+
 on:
   workflow_dispatch:
     inputs:
@@ -41,6 +45,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify pyproject.toml version matches workflow
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          test "$version" = "${{ env.PACKAGE_VERSION }}"
 
       - uses: actions/setup-python@v5
         with:
