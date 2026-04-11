@@ -18,6 +18,8 @@ from avos_cli.utils.dotenv_load import load_layers
 from avos_cli.utils.output import print_error
 
 if TYPE_CHECKING:
+    from avos_cli.services.diff_summary_service import DiffSummaryService
+    from avos_cli.services.github_client import GitHubClient
     from avos_cli.services.reply_output_service import ReplyOutputService
 
 # Load .env: cwd, then repository root (beside avos_cli) with override so
@@ -48,7 +50,7 @@ def _first_env(*keys: str) -> str:
     return ""
 
 
-def _github_client_or_exit(repo_root: Path):
+def _github_client_or_exit(repo_root: Path) -> GitHubClient:
     """Resolve GitHub client from connected config (overlay) and env; exit if missing."""
     from avos_cli.services.github_client import github_client_for_repo
 
@@ -62,15 +64,45 @@ def _github_client_or_exit(repo_root: Path):
         raise typer.Exit(1) from None
 
 
-def _make_reply_service() -> ReplyOutputService | None:
-    """Build ReplyOutputService from env if REPLY_MODEL, REPLY_MODEL_URL, REPLY_MODEL_API_KEY are set."""
+def _get_reply_model_config() -> tuple[str, str, str]:
+    """Get REPLY_MODEL configuration from environment.
+
+    Returns:
+        Tuple of (model, url, api_key). Empty strings if not configured.
+    """
     model = _first_env("REPLY_MODEL", "reply_model")
     url = _first_env("REPLY_MODEL_URL", "reply_model_URL", "reply_model_url")
     api_key = _first_env("REPLY_MODEL_API_KEY", "reply_model_API_KEY", "reply_model_api_key")
+    return model, url, api_key
+
+
+def _make_reply_service() -> ReplyOutputService | None:
+    """Build ReplyOutputService from env if REPLY_MODEL, REPLY_MODEL_URL, REPLY_MODEL_API_KEY are set."""
+    model, url, api_key = _get_reply_model_config()
     if model and url and api_key:
         from avos_cli.services.reply_output_service import ReplyOutputService
         return ReplyOutputService(api_key=api_key, api_url=url, model=model)
     return None
+
+
+def _make_diff_summary_service() -> DiffSummaryService | None:
+    """Build DiffSummaryService from env if REPLY_MODEL config is available."""
+    model, url, api_key = _get_reply_model_config()
+    if model and url and api_key:
+        from avos_cli.services.diff_summary_service import DiffSummaryService
+
+        return DiffSummaryService(api_key=api_key, api_url=url, model=model)
+    return None
+
+
+def _github_client_optional(repo_root: Path) -> GitHubClient | None:
+    """Resolve GitHub client from connected config (overlay) and env; return None if missing."""
+    from avos_cli.services.github_client import github_client_for_repo
+
+    try:
+        return github_client_for_repo(repo_root)
+    except AuthError:
+        return None
 
 
 @app.callback(invoke_without_command=True)
@@ -309,11 +341,15 @@ def ask(
             raise typer.Exit(1)
 
     reply_service = _make_reply_service()
+    github_client = _github_client_optional(repo_root)
+    diff_summary_service = _make_diff_summary_service()
     orchestrator = AskOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         llm_client=LLMClient(api_key=llm_api_key, provider=provider),
         repo_root=repo_root,
         reply_service=reply_service,
+        github_client=github_client,
+        diff_summary_service=diff_summary_service,
     )
     code = orchestrator.run("_/_", question, json_output=json_output)
     raise typer.Exit(code)
@@ -368,11 +404,15 @@ def history(
             raise typer.Exit(1)
 
     reply_service = _make_reply_service()
+    github_client = _github_client_optional(repo_root)
+    diff_summary_service = _make_diff_summary_service()
     orchestrator = HistoryOrchestrator(
         memory_client=AvosMemoryClient(api_key=api_key, api_url=api_url),
         llm_client=LLMClient(api_key=llm_api_key, provider=provider),
         repo_root=repo_root,
         reply_service=reply_service,
+        github_client=github_client,
+        diff_summary_service=diff_summary_service,
     )
     code = orchestrator.run("_/_", subject, json_output=json_output)
     raise typer.Exit(code)

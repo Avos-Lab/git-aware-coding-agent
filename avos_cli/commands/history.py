@@ -1,15 +1,17 @@
 """History command orchestrator for AVOS CLI.
 
 Implements the `avos history "subject"` flow: retrieves relevant memory
-artifacts via hybrid search, sorts chronologically, sanitizes, packs
-within budget, synthesizes timeline via LLM, validates citation grounding,
-and renders timeline or deterministic chronological fallback.
+artifacts via hybrid search, enriches with git diff summaries, sorts
+chronologically, sanitizes, packs within budget, synthesizes timeline via LLM,
+validates citation grounding, and renders timeline or deterministic
+chronological fallback.
 """
 
 from __future__ import annotations
 
 import json as json_module
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from avos_cli.config.manager import load_config
 from avos_cli.exceptions import (
@@ -17,6 +19,8 @@ from avos_cli.exceptions import (
     ConfigurationNotInitializedError,
     LLMSynthesisError,
 )
+from avos_cli.models.api import SearchHit
+from avos_cli.models.diff import DiffStatus
 from avos_cli.models.query import (
     FallbackReason,
     QueryMode,
@@ -24,9 +28,12 @@ from avos_cli.models.query import (
     SanitizedArtifact,
     SynthesisRequest,
 )
+from avos_cli.parsers import ReferenceParser, extract_refs_by_note
 from avos_cli.services.chronology_service import ChronologyService
 from avos_cli.services.citation_validator import CitationValidator
 from avos_cli.services.context_budget_service import ContextBudgetService
+from avos_cli.services.diff_resolver import DiffResolver
+from avos_cli.services.diff_summary_service import DiffSummaryService
 from avos_cli.services.llm_client import LLMClient
 from avos_cli.services.memory_client import AvosMemoryClient
 from avos_cli.services.query_fallback_formatter import QueryFallbackFormatter
@@ -46,6 +53,9 @@ from avos_cli.utils.output import (
     render_table,
 )
 from avos_cli.utils.sanitization_diagnostics import explain_sanitization_gate
+
+if TYPE_CHECKING:
+    from avos_cli.services.github_client import GitHubClient
 
 _log = get_logger("commands.history")
 
@@ -133,7 +143,7 @@ _SANITIZATION_CONFIDENCE_THRESHOLD = 70
 class HistoryOrchestrator:
     """Orchestrates the `avos history` command.
 
-    Pipeline: search -> chronology -> sanitize -> budget -> synthesize -> ground -> render/fallback.
+    Pipeline: search -> enrich with diffs -> chronology -> sanitize -> budget -> synthesize -> ground -> render/fallback.
     Exit codes: 0=success, 1=precondition, 2=hard external error.
 
     Args:
@@ -141,6 +151,8 @@ class HistoryOrchestrator:
         llm_client: LLM synthesis client.
         repo_root: Path to the repository root.
         reply_service: Optional reply output service for decorated terminal output.
+        github_client: Optional GitHub client for diff enrichment.
+        diff_summary_service: Optional service for summarizing diffs via LLM.
     """
 
     def __init__(
@@ -149,11 +161,15 @@ class HistoryOrchestrator:
         llm_client: LLMClient,
         repo_root: Path,
         reply_service: ReplyOutputService | None = None,
+        github_client: GitHubClient | None = None,
+        diff_summary_service: DiffSummaryService | None = None,
     ) -> None:
         self._memory = memory_client
         self._llm = llm_client
         self._repo_root = repo_root
         self._reply_service = reply_service
+        self._github_client = github_client
+        self._diff_summary_service = diff_summary_service
         self._chronology = ChronologyService()
         self._sanitizer = SanitizationService()
         self._budget = ContextBudgetService()
@@ -277,6 +293,13 @@ class HistoryOrchestrator:
             )
             for hit in search_result.results
         ]
+
+        # Stage 2.5: Diff enrichment (graceful skip)
+        enriched_artifacts = self._enrich_with_diffs(
+            search_result.results, artifacts, repo_slug
+        )
+        if enriched_artifacts is not None:
+            artifacts = enriched_artifacts
 
         # Stage 3: Chronological sort
         sorted_artifacts = self._chronology.sort(artifacts)
@@ -407,3 +430,120 @@ class HistoryOrchestrator:
                 )
 
         return 0
+
+    def _enrich_with_diffs(
+        self,
+        hits: list[SearchHit],
+        artifacts: list[RetrievedArtifact],
+        repo_slug: str,
+    ) -> list[RetrievedArtifact] | None:
+        """Enrich artifacts with git diff summaries.
+
+        Extracts PR/commit references from search hits, fetches diffs via GitHub API,
+        summarizes them via the diff summary service, and injects summaries into
+        artifact content.
+
+        Args:
+            hits: Original search hits from memory API.
+            artifacts: Converted RetrievedArtifact list.
+            repo_slug: Repository slug for reference resolution.
+
+        Returns:
+            Enriched artifacts list, or None if enrichment should be skipped.
+        """
+        if self._github_client is None or self._diff_summary_service is None:
+            _log.debug("Diff enrichment skipped: missing github_client or diff_summary_service")
+            return None
+
+        try:
+            note_refs_list = extract_refs_by_note(hits)
+
+            all_refs: list[str] = []
+            note_id_to_refs: dict[str, list[str]] = {}
+            for note_refs in note_refs_list:
+                note_id_to_refs[note_refs.note_id] = note_refs.references
+                all_refs.extend(note_refs.references)
+
+            if not all_refs:
+                _log.debug("No PR/commit references found in artifacts")
+                return None
+
+            parser = ReferenceParser()
+            parsed_refs = parser.parse_all(all_refs, repo_slug)
+
+            if not parsed_refs:
+                _log.debug("No valid references parsed")
+                return None
+
+            resolver = DiffResolver(self._github_client)
+            diff_results = resolver.resolve(parsed_refs)
+
+            resolved_diffs = [r for r in diff_results if r.status == DiffStatus.RESOLVED]
+            if not resolved_diffs:
+                _log.debug("No diffs resolved successfully")
+                return None
+
+            summaries = self._diff_summary_service.summarize_diffs(resolved_diffs)
+            if not summaries:
+                _log.debug("No diff summaries generated")
+                return None
+
+            canonical_to_summary: dict[str, str] = summaries
+
+            enriched: list[RetrievedArtifact] = []
+            for artifact in artifacts:
+                refs_for_note = note_id_to_refs.get(artifact.note_id, [])
+                summary_parts: list[str] = []
+
+                for ref_str in refs_for_note:
+                    parsed = parser.parse(ref_str, repo_slug)
+                    if parsed is None:
+                        continue
+                    for canonical_id, summary in canonical_to_summary.items():
+                        if self._ref_matches_canonical(parsed, canonical_id):
+                            summary_parts.append(summary)
+                            break
+
+                if summary_parts:
+                    combined_summary = "\n\n".join(summary_parts)
+                    new_content = (
+                        f"{artifact.content}\n\n--- Diff Summary ---\n{combined_summary}"
+                    )
+                    enriched.append(
+                        RetrievedArtifact(
+                            note_id=artifact.note_id,
+                            content=new_content,
+                            created_at=artifact.created_at,
+                            rank=artifact.rank,
+                        )
+                    )
+                else:
+                    enriched.append(artifact)
+
+            return enriched
+
+        except Exception as e:
+            _log.warning("Diff enrichment failed: %s", e)
+            return None
+
+    def _ref_matches_canonical(self, parsed: object, canonical_id: str) -> bool:
+        """Check if a parsed reference matches a canonical ID.
+
+        Args:
+            parsed: ParsedReference object.
+            canonical_id: Canonical ID like 'PR #123' or full SHA.
+
+        Returns:
+            True if the reference matches.
+        """
+        from avos_cli.models.diff import DiffReferenceType, ParsedReference
+
+        if not isinstance(parsed, ParsedReference):
+            return False
+
+        if parsed.reference_type == DiffReferenceType.PR:
+            return canonical_id == f"PR #{parsed.raw_id}"
+        else:
+            return canonical_id.startswith(parsed.raw_id) or parsed.raw_id.startswith(
+                canonical_id[:7]
+            )

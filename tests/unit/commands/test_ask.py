@@ -1,8 +1,8 @@
 """Brutal tests for AskOrchestrator (avos_cli/commands/ask.py).
 
-Covers full pipeline: search -> sanitize -> budget -> synthesize ->
+Covers full pipeline: search -> diff enrichment -> sanitize -> budget -> synthesize ->
 ground -> render/fallback. Tests happy path, empty state, LLM failure,
-grounding failure, sanitization block, and Memory API errors.
+grounding failure, sanitization block, Memory API errors, and diff enrichment.
 """
 
 from __future__ import annotations
@@ -45,10 +45,26 @@ def _make_synthesis_response() -> SynthesisResponse:
     )
 
 
+def _make_search_result_with_refs(count: int = 2) -> SearchResult:
+    """Create search result with PR/commit references in content."""
+    hits = [
+        SearchHit(
+            note_id=f"note-{i}",
+            content=f"[pr: #{100 + i}] [hash: abc{i}def] Content for artifact {i}.",
+            created_at=f"2026-01-{10+i:02d}T10:00:00Z",
+            rank=i + 1,
+        )
+        for i in range(count)
+    ]
+    return SearchResult(results=hits, total_count=count)
+
+
 def _make_orchestrator(
     memory_client: MagicMock | None = None,
     llm_client: MagicMock | None = None,
     repo_root: Path | None = None,
+    github_client: MagicMock | None = None,
+    diff_summary_service: MagicMock | None = None,
 ) -> AskOrchestrator:
     mc = memory_client or MagicMock()
     lc = llm_client or MagicMock()
@@ -57,6 +73,8 @@ def _make_orchestrator(
         memory_client=mc,
         llm_client=lc,
         repo_root=rr,
+        github_client=github_client,
+        diff_summary_service=diff_summary_service,
     )
 
 
@@ -345,4 +363,211 @@ class TestAdditionalCoverageBranches:
                 llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
             )
             code = orch.run("org/repo", "question")
+        assert code == 0
+
+
+class TestDiffEnrichment:
+    """Tests for diff enrichment stage."""
+
+    def test_skips_enrichment_when_no_github_client(self):
+        """Should skip enrichment gracefully when github_client is None."""
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result_with_refs(2)
+        lc = MagicMock()
+        lc.synthesize.return_value = SynthesisResponse(
+            answer_text=json.dumps({
+                "answer": "Answer",
+                "citations": [{"note_id": "note-0"}, {"note_id": "note-1"}],
+            }),
+        )
+
+        orch = _make_orchestrator(
+            memory_client=mc,
+            llm_client=lc,
+            github_client=None,
+            diff_summary_service=MagicMock(),
+        )
+        with patch("avos_cli.commands.ask.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "question")
+        assert code == 0
+
+    def test_skips_enrichment_when_no_diff_summary_service(self):
+        """Should skip enrichment gracefully when diff_summary_service is None."""
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result_with_refs(2)
+        lc = MagicMock()
+        lc.synthesize.return_value = SynthesisResponse(
+            answer_text=json.dumps({
+                "answer": "Answer",
+                "citations": [{"note_id": "note-0"}, {"note_id": "note-1"}],
+            }),
+        )
+
+        orch = _make_orchestrator(
+            memory_client=mc,
+            llm_client=lc,
+            github_client=MagicMock(),
+            diff_summary_service=None,
+        )
+        with patch("avos_cli.commands.ask.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "question")
+        assert code == 0
+
+    def test_enrichment_injects_diff_summary_into_artifacts(self):
+        """Should inject diff summaries into artifact content."""
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result_with_refs(1)
+
+        lc = MagicMock()
+        lc.synthesize.return_value = SynthesisResponse(
+            answer_text=json.dumps({
+                "answer": "Answer with diff context",
+                "citations": [{"note_id": "note-0"}],
+            }),
+        )
+
+        gh_client = MagicMock()
+        gh_client.get_pr_diff.return_value = "diff --git a/foo.py b/foo.py\n+new line"
+        gh_client.list_pr_commits.return_value = ["abc0def1234567890123456789012345678901234"]
+
+        diff_service = MagicMock()
+        diff_service.summarize_diffs.return_value = {
+            "PR #100": "## Summary\nThis PR adds a new feature."
+        }
+
+        orch = _make_orchestrator(
+            memory_client=mc,
+            llm_client=lc,
+            github_client=gh_client,
+            diff_summary_service=diff_service,
+        )
+
+        with patch("avos_cli.commands.ask.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            with patch.object(orch, "_sanitizer") as mock_sanitizer:
+                mock_sanitizer.sanitize.return_value = MagicMock(
+                    confidence_score=100,
+                    artifacts=[
+                        SanitizedArtifact(
+                            note_id="note-0",
+                            content="[pr: #100] Content\n\n--- Diff Summary ---\n## Summary\nThis PR adds a new feature.",
+                            created_at="2026-01-10T10:00:00Z",
+                            rank=1,
+                        )
+                    ],
+                )
+                code = orch.run("org/repo", "question")
+
+        assert code == 0
+        mock_sanitizer.sanitize.assert_called_once()
+        artifacts_passed = mock_sanitizer.sanitize.call_args[0][0]
+        assert len(artifacts_passed) == 1
+        assert "--- Diff Summary ---" in artifacts_passed[0].content
+
+    def test_enrichment_handles_exception_gracefully(self):
+        """Should skip enrichment and continue when exception occurs."""
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result_with_refs(2)
+        lc = MagicMock()
+        lc.synthesize.return_value = SynthesisResponse(
+            answer_text=json.dumps({
+                "answer": "Answer",
+                "citations": [{"note_id": "note-0"}, {"note_id": "note-1"}],
+            }),
+        )
+
+        gh_client = MagicMock()
+        gh_client.get_pr_diff.side_effect = Exception("API error")
+
+        diff_service = MagicMock()
+
+        orch = _make_orchestrator(
+            memory_client=mc,
+            llm_client=lc,
+            github_client=gh_client,
+            diff_summary_service=diff_service,
+        )
+        with patch("avos_cli.commands.ask.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "question")
+        assert code == 0
+
+    def test_enrichment_skips_when_no_refs_found(self):
+        """Should skip enrichment when no PR/commit refs in artifacts."""
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result(2)  # No refs in content
+        lc = MagicMock()
+        lc.synthesize.return_value = SynthesisResponse(
+            answer_text=json.dumps({
+                "answer": "Answer",
+                "citations": [{"note_id": "note-0"}, {"note_id": "note-1"}],
+            }),
+        )
+
+        gh_client = MagicMock()
+        diff_service = MagicMock()
+
+        orch = _make_orchestrator(
+            memory_client=mc,
+            llm_client=lc,
+            github_client=gh_client,
+            diff_summary_service=diff_service,
+        )
+        with patch("avos_cli.commands.ask.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "question")
+
+        assert code == 0
+        gh_client.get_pr_diff.assert_not_called()
+        diff_service.summarize_diffs.assert_not_called()
+
+    def test_enrichment_skips_when_no_summaries_generated(self):
+        """Should skip enrichment when diff summary service returns empty."""
+        mc = MagicMock()
+        mc.search.return_value = _make_search_result_with_refs(1)
+        lc = MagicMock()
+        lc.synthesize.return_value = SynthesisResponse(
+            answer_text=json.dumps({
+                "answer": "Answer",
+                "citations": [{"note_id": "note-0"}],
+            }),
+        )
+
+        gh_client = MagicMock()
+        gh_client.get_pr_diff.return_value = "diff text"
+        gh_client.list_pr_commits.return_value = []
+
+        diff_service = MagicMock()
+        diff_service.summarize_diffs.return_value = {}
+
+        orch = _make_orchestrator(
+            memory_client=mc,
+            llm_client=lc,
+            github_client=gh_client,
+            diff_summary_service=diff_service,
+        )
+        with patch("avos_cli.commands.ask.load_config") as mock_cfg:
+            mock_cfg.return_value = MagicMock(
+                memory_id="repo:org/repo",
+                llm=MagicMock(provider="anthropic", model="claude-sonnet-4-5-20250929"),
+            )
+            code = orch.run("org/repo", "question")
+
         assert code == 0

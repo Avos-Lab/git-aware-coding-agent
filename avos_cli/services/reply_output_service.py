@@ -12,6 +12,7 @@ from pathlib import Path
 
 import httpx
 
+from avos_cli.parsers.artifact_ref_extractor import _HASH_RE, _PR_RE
 from avos_cli.utils.logger import get_logger
 
 _log = get_logger("reply_output_service")
@@ -30,10 +31,10 @@ _HISTORY_JSON_CONVERTER_PATH = _AGENTS_DIR / "avos_hisotry_agent_JSON_converter.
 
 _JSON_CONVERTER_MAX_TOKENS = 2000
 
-# Regex patterns for dumb formatter
-_PR_NUM = re.compile(r"\[pr:\s*#(\d+)\]", re.IGNORECASE)
+# Regex patterns for dumb formatter (PR and HASH imported from shared module)
+_PR_NUM = _PR_RE
 _ISSUE_NUM = re.compile(r"\[issue:\s*#(\d+)\]", re.IGNORECASE)
-_HASH = re.compile(r"\[hash:\s*([a-f0-9]+)\]", re.IGNORECASE)
+_HASH = _HASH_RE
 _AUTHOR = re.compile(r"\[author:\s*([^\]]+)\]", re.IGNORECASE)
 _TITLE = re.compile(r"Title:\s*(.+?)(?:\n|$)", re.DOTALL | re.IGNORECASE)
 _MESSAGE = re.compile(r"Message:\s*(.+?)(?:\n|$)", re.DOTALL | re.IGNORECASE)
